@@ -1,11 +1,11 @@
 /* Service worker for Boring game site.
    Caches only the site shell (page, font, icons, covers) so the app opens fast.
    Game files are NOT cached here — they load straight from the network,
-   so they never go stale. Bump VERSION whenever you change index.html. */
-const VERSION = "bgs-v1";
+   so they never go stale. Bump VERSION whenever you change game/index.html. */
+const VERSION = "bgs-v2";
 const SHELL = [
-  "./",
-  "index.html",
+  "game/",
+  "images/found-me.png",
   "vrc%20font.ttf",
   "favicon.png",
   "manifest.webmanifest",
@@ -34,17 +34,19 @@ self.addEventListener("fetch", e => {
   const base = new URL("./", self.registration.scope).pathname;
   const rel = decodeURIComponent(url.pathname.slice(base.length));
 
-  // The home page: try the network first (so updates show up), fall back to cache offline.
-  if (req.mode === "navigate" && (rel === "" || rel === "index.html")) {
+  // The game page: try the network first (so updates show up), fall back to cache offline.
+  if (req.mode === "navigate" && (rel === "game/" || rel === "game/index.html")) {
     e.respondWith(
       fetch(req).then(res => {
         const copy = res.clone();
-        caches.open(VERSION).then(c => c.put("index.html", copy));
+        caches.open(VERSION).then(c => c.put("game/", copy));
         return res;
-      }).catch(() => caches.match("index.html"))
+      }).catch(() => caches.match("game/"))
     );
     return;
   }
+
+  if (req.mode === "navigate") return; // other pages: normal network
 
   // Cover images + shell files: cache first, then network.
   const isCover = rel.startsWith("Games/") && /\/cover\.(png|jpe?g|webp|gif)$/i.test(rel);

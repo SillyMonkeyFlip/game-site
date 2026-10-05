@@ -1,0 +1,1273 @@
+diff --git a/Project.xml b/Project.xml
+index de6b53b..c02534e 100644
+--- a/Project.xml
++++ b/Project.xml
+@@ -24,11 +24,11 @@
+ 	<define name="HSCRIPT_ALLOWED" if="desktop" />
+ 	<define name="LUA_ALLOWED" if="desktop" />
+ 	<define name="ACHIEVEMENTS_ALLOWED" />
+-	<define name="DISCORD_ALLOWED" />
++	<define name="DISCORD_ALLOWED" if="desktop" />
+ 	<define name="TRANSLATIONS_ALLOWED" />
+ 	<define name="IRIS_DEBUG"/>
+ 	
+-	<define name="MULTITHREADED_LOADING" /> <!-- UNCOMMENTING THIS LINE WILL ENABLE MULTITHREADED LOADING, WHICH IMPROVES LOADING TIMES, BUT APPARENTLY CAN FREEZE THE GAME ON SONG LOAD IN OLDER PCs? -->
++	<define name="MULTITHREADED_LOADING" if="desktop" /> <!-- UNCOMMENTING THIS LINE WILL ENABLE MULTITHREADED LOADING, WHICH IMPROVES LOADING TIMES, BUT APPARENTLY CAN FREEZE THE GAME ON SONG LOAD IN OLDER PCs? -->
+ 	<define name="SHOW_LOADING_SCREEN" />
+ 	<define name="PSYCH_WATERMARKS"/> <!-- DELETE THIS TO REMOVE THE PSYCH LOGO FROM LOADING SCREEN -->
+ 
+@@ -44,7 +44,8 @@
+ 	<window width="1280" height="720" fps="60" background="#000000" hardware="true" vsync="false" allow-high-dpi="true" />
+ 
+ 	<!--HTML5-specific-->
+-	<window if="html5" resizable="true" />
++	<window if="html5" resizable="true" width="0" height="0" />
++	<app title="Nocturnal Protocol (Fan Recreation)" if="html5" />
+ 
+ 	<!--Desktop-specific-->
+ 	<window if="desktop" orientation="landscape" fullscreen="false" resizable="true" vsync="false"/>
+@@ -73,6 +74,9 @@
+ 	<assets path="assets/shared"        exclude="*.ogg" if="web"/>
+ 	<assets path="assets/shared"        exclude="*.mp3" unless="web"/>
+ 	<assets path="assets/embed"         exclude="*.ogg" if="web" embed="true"/>
++	<!-- Nocturnal Protocol (Fan Recreation) mod files, baked in for the web build -->
++	<assets path="assets/nocturnal" rename="assets/shared" exclude="*.ogg" if="web"/>
++	<assets path="assets/nocturnal" rename="assets/shared" exclude="*.mp3" unless="web"/>
+ 	<assets path="assets/embed"         exclude="*.mp3" unless="web" embed="true"/>
+ 	<assets path="assets/videos"        if="VIDEOS_ALLOWED"/>
+ 	<assets path="assets/songs"         exclude="*.ogg" if="web"/>
+diff --git a/source/backend/BaseStage.hx b/source/backend/BaseStage.hx
+index 6797de0..35a334e 100644
+--- a/source/backend/BaseStage.hx
++++ b/source/backend/BaseStage.hx
+@@ -65,6 +65,12 @@ class BaseStage extends FlxBasic
+ 	//main callbacks
+ 	public function create() {}
+ 	public function createPost() {}
++	// Web port hooks (stand-ins for Lua callback timing)
++	public function scriptCreate() {}
++	public function scriptCreateLate() {}
++	public function scriptUpdate(elapsed:Float) {}
++	public function scriptUpdatePost(elapsed:Float) {}
++	public function scriptSpawnNote(note:objects.Note) {}
+ 	//public function update(elapsed:Float) {}
+ 	public function countdownTick(count:Countdown, num:Int) {}
+ 	public function startSong() {}
+diff --git a/source/backend/CoolUtil.hx b/source/backend/CoolUtil.hx
+index c918726..bfddc60 100644
+--- a/source/backend/CoolUtil.hx
++++ b/source/backend/CoolUtil.hx
+@@ -145,7 +145,7 @@ class CoolUtil
+ 			Sys.command(command, [folder]);
+ 			trace('$command $folder');
+ 		#else
+-			FlxG.error("Platform is not supported for CoolUtil.openFolder");
++			FlxG.log.error("Platform is not supported for CoolUtil.openFolder");
+ 		#end
+ 	}
+ 
+diff --git a/source/backend/NoteTypesConfig.hx b/source/backend/NoteTypesConfig.hx
+index 3e4beed..2d73171 100644
+--- a/source/backend/NoteTypesConfig.hx
++++ b/source/backend/NoteTypesConfig.hx
+@@ -18,7 +18,7 @@ class NoteTypesConfig
+ 		if(noteTypesData.exists(name)) return noteTypesData.get(name);
+ 
+ 		var str:String = Paths.getTextFromFile('custom_notetypes/$name.txt');
+-		if(str == null || !str.contains(':') || !str.contains('=')) noteTypesData.set(name, null);
++		if(str == null || !str.contains(':') || !str.contains('=')) { noteTypesData.set(name, null); return null; }
+ 
+ 		var parsed:Array<NoteTypeProperty> = [];
+ 		var lines:Array<String> = CoolUtil.listFromString(str);
+diff --git a/source/backend/WeekData.hx b/source/backend/WeekData.hx
+index 008d95e..a3f6035 100644
+--- a/source/backend/WeekData.hx
++++ b/source/backend/WeekData.hx
+@@ -64,9 +64,17 @@ class WeekData {
+ 	// HELP: Is there any way to convert a WeekFile to WeekData without having to put all variables there manually? I'm kind of a noob in haxe lmao
+ 	public function new(weekFile:WeekFile, fileName:String) {
+ 		// here ya go - MiguelItsOut
++		#if js
++		// On JS, unset class fields don't exist on the instance yet, so the check below would skip everything
++		var known:Array<String> = Type.getInstanceFields(WeekData);
++		for (field in Reflect.fields(weekFile))
++			if(known.contains(field))
++				Reflect.setField(this, field, Reflect.field(weekFile, field));
++		#else
+ 		for (field in Reflect.fields(weekFile))
+ 			if(Reflect.fields(this).contains(field)) // Reflect.hasField() won't fucking work :/
+ 				Reflect.setProperty(this, field, Reflect.getProperty(weekFile, field));
++		#end
+ 
+ 		this.fileName = fileName;
+ 	}
+diff --git a/source/backend/web/FixedThreadPool.hx b/source/backend/web/FixedThreadPool.hx
+new file mode 100644
+index 0000000..d7b11ac
+--- /dev/null
++++ b/source/backend/web/FixedThreadPool.hx
+@@ -0,0 +1,9 @@
++package backend.web;
++
++/** Web shim: runs jobs immediately on the main thread. */
++class FixedThreadPool {
++	public var threadsCount(default, null):Int;
++	public function new(threadsCount:Int) { this.threadsCount = threadsCount; }
++	public function run(job:() -> Void):Void { job(); }
++	public function shutdown():Void {}
++}
+diff --git a/source/backend/web/Mutex.hx b/source/backend/web/Mutex.hx
+new file mode 100644
+index 0000000..a487f6b
+--- /dev/null
++++ b/source/backend/web/Mutex.hx
+@@ -0,0 +1,9 @@
++package backend.web;
++
++/** Web shim: single-threaded, so locking is a no-op. */
++class Mutex {
++	public function new() {}
++	public function acquire():Void {}
++	public function tryAcquire():Bool return true;
++	public function release():Void {}
++}
+diff --git a/source/backend/web/Thread.hx b/source/backend/web/Thread.hx
+new file mode 100644
+index 0000000..f31f570
+--- /dev/null
++++ b/source/backend/web/Thread.hx
+@@ -0,0 +1,8 @@
++package backend.web;
++
++/** Web shim: "threads" run immediately. */
++class Thread {
++	function new() {}
++	public static function create(job:() -> Void):Thread { job(); return new Thread(); }
++	public static function current():Thread return new Thread();
++}
+diff --git a/source/backend/web/WebFile.hx b/source/backend/web/WebFile.hx
+new file mode 100644
+index 0000000..9563c40
+--- /dev/null
++++ b/source/backend/web/WebFile.hx
+@@ -0,0 +1,31 @@
++package backend.web;
++
++import openfl.utils.Assets;
++
++/** Web stand-in for sys.io.File, backed by the embedded asset library. */
++class WebFile
++{
++	static inline function clean(path:String):String
++	{
++		if (path == null) return null;
++		path = StringTools.replace(path, '\\', '/');
++		while (path.startsWith('./')) path = path.substr(2);
++		return path;
++	}
++
++	public static function getContent(path:String):String
++	{
++		path = clean(path);
++		return Assets.exists(path) ? Assets.getText(path) : null;
++	}
++
++	public static function getBytes(path:String):haxe.io.Bytes
++	{
++		path = clean(path);
++		return Assets.exists(path) ? Assets.getBytes(path) : null;
++	}
++
++	public static function saveContent(path:String, content:String):Void {}
++	public static function saveBytes(path:String, bytes:haxe.io.Bytes):Void {}
++	public static function copy(src:String, dst:String):Void {}
++}
+diff --git a/source/backend/web/WebFileSystem.hx b/source/backend/web/WebFileSystem.hx
+new file mode 100644
+index 0000000..9d020f4
+--- /dev/null
++++ b/source/backend/web/WebFileSystem.hx
+@@ -0,0 +1,50 @@
++package backend.web;
++
++import openfl.utils.Assets;
++
++/** Web stand-in for sys.FileSystem, backed by the embedded asset library. */
++class WebFileSystem
++{
++	static function clean(path:String):String
++	{
++		if (path == null) return '';
++		path = StringTools.replace(path, '\\', '/');
++		while (path.startsWith('./')) path = path.substr(2);
++		while (path.endsWith('/')) path = path.substr(0, path.length - 1);
++		return path;
++	}
++
++	public static function exists(path:String):Bool
++	{
++		path = clean(path);
++		return Assets.exists(path) || isDirectory(path);
++	}
++
++	public static function isDirectory(path:String):Bool
++	{
++		path = clean(path) + '/';
++		for (id in Assets.list()) if (id.startsWith(path)) return true;
++		return false;
++	}
++
++	public static function readDirectory(path:String):Array<String>
++	{
++		path = clean(path) + '/';
++		var out:Array<String> = [];
++		for (id in Assets.list())
++		{
++			if (!id.startsWith(path)) continue;
++			var rest = id.substr(path.length);
++			var name = rest.split('/')[0];
++			if (name.length > 0 && !out.contains(name)) out.push(name);
++		}
++		return out;
++	}
++
++	public static function fullPath(path:String):String return path;
++	public static function absolutePath(path:String):String return path;
++	public static function createDirectory(path:String):Void {}
++	public static function deleteFile(path:String):Void {}
++	public static function deleteDirectory(path:String):Void {}
++	public static function rename(path:String, newPath:String):Void {}
++}
+diff --git a/source/debug/FPSCounter.hx b/source/debug/FPSCounter.hx
+index bb17bf9..9b5a431 100644
+--- a/source/debug/FPSCounter.hx
++++ b/source/debug/FPSCounter.hx
+@@ -62,7 +62,7 @@ class FPSCounter extends TextField
+ 
+ 	public dynamic function updateText():Void { // so people can override it in hscript
+ 		text = 'FPS: ${currentFPS}'
+-		+ '\nMemory: ${flixel.util.FlxStringUtil.formatBytes(memoryMegas)}';
++		#if !html5 + '\nMemory: ${flixel.util.FlxStringUtil.formatBytes(memoryMegas)}' #end;
+ 
+ 		textColor = 0xFFFFFFFF;
+ 		if (currentFPS < FlxG.drawFramerate * 0.5)
+@@ -70,5 +70,5 @@ class FPSCounter extends TextField
+ 	}
+ 
+ 	inline function get_memoryMegas():Float
+-		return cpp.vm.Gc.memInfo64(cpp.vm.Gc.MEM_INFO_USAGE);
++		return #if cpp cpp.vm.Gc.memInfo64(cpp.vm.Gc.MEM_INFO_USAGE) #else 0 #end;
+ }
+diff --git a/source/import.hx b/source/import.hx
+index 1a775c2..d3a657e 100644
+--- a/source/import.hx
++++ b/source/import.hx
+@@ -17,8 +17,9 @@ import backend.Achievements;
+ #if sys
+ import sys.*;
+ import sys.io.*;
+-#elseif js
+-import js.html.*;
++#else
++import backend.web.WebFile as File;
++import backend.web.WebFileSystem as FileSystem;
+ #end
+ 
+ import backend.Paths;
+diff --git a/source/states/CreditsState.hx b/source/states/CreditsState.hx
+index cb038d0..cf423f5 100644
+--- a/source/states/CreditsState.hx
++++ b/source/states/CreditsState.hx
+@@ -36,6 +36,19 @@ class CreditsState extends MusicBeatState
+ 		#if MODS_ALLOWED
+ 		for (mod in Mods.parseList().enabled) pushModCreditsToList(mod);
+ 		#end
++		#if !MODS_ALLOWED
++		// Web build: the mod's credits are baked into the shared library
++		var creditsFile:String = Paths.getSharedPath('data/credits.txt');
++		if (openfl.utils.Assets.exists(creditsFile))
++		{
++			for (line in openfl.utils.Assets.getText(creditsFile).split('\n'))
++			{
++				var arr:Array<String> = line.replace('\r', '').replace('\\n', '\n').split("::");
++				creditsStuff.push(arr);
++			}
++			creditsStuff.push(['']);
++		}
++		#end
+ 
+ 		var defaultList:Array<Array<String>> = [ //Name - Icon name - Description - Link - BG Color
+ 			["Psych Engine Team"],
+diff --git a/source/states/LoadingState.hx b/source/states/LoadingState.hx
+index 7898ce7..32cebb8 100644
+--- a/source/states/LoadingState.hx
++++ b/source/states/LoadingState.hx
+@@ -1,7 +1,11 @@
+ package states;
+ 
+ import lime.app.Future;
++#if sys
+ import sys.thread.FixedThreadPool;
++#else
++import backend.web.FixedThreadPool;
++#end
+ import haxe.Json;
+ import lime.utils.Assets;
+ import openfl.display.BitmapData;
+@@ -17,8 +21,13 @@ import backend.Song;
+ import backend.StageData;
+ import objects.Character;
+ 
++#if sys
+ import sys.thread.Thread;
+ import sys.thread.Mutex;
++#else
++import backend.web.Thread;
++import backend.web.Mutex;
++#end
+ 
+ import objects.Note;
+ import objects.NoteSplash;
+@@ -390,7 +399,11 @@ class LoadingState extends MusicBeatState
+ 				_loaded();
+ 				break;
+ 			}
++			#if sys
+ 			else Sys.sleep(0.001);
++			#else
++			else { _loaded(); break; }
++			#end
+ 		}
+ 		return target;
+ 	}
+@@ -412,7 +425,7 @@ class LoadingState extends MusicBeatState
+ 	{
+ 		#if MULTITHREADED_LOADING
+ 		// Due to the Main thread and Discord thread, we decrease it by 2.
+-		var threadCount:Int = Std.int(Math.max(1, getCPUThreadsCount() - #if DISCORD_ALLOWED 2 #else 1 #end));
++		var threadCount:Int = Std.int(Math.max(1, #if cpp getCPUThreadsCount() #else 1 #end - #if DISCORD_ALLOWED 2 #else 1 #end));
+ 		#else
+ 		var threadCount:Int = 1;
+ 		#end
+diff --git a/source/states/MainMenuState.hx b/source/states/MainMenuState.hx
+index 59c39fb..a7286f9 100644
+--- a/source/states/MainMenuState.hx
++++ b/source/states/MainMenuState.hx
+@@ -25,7 +25,7 @@ class MainMenuState extends MusicBeatState
+ 
+ 	//Centered/Text options
+ 	var optionShit:Array<String> = [
+-		'story_mode',
++		#if !html5 'story_mode', #end // web build: the mod's week is Freeplay-only
+ 		'freeplay',
+ 		#if MODS_ALLOWED 'mods', #end
+ 		'credits'
+diff --git a/source/states/PlayState.hx b/source/states/PlayState.hx
+index 1a40c2b..33112e5 100644
+--- a/source/states/PlayState.hx
++++ b/source/states/PlayState.hx
+@@ -389,6 +389,7 @@ class PlayState extends MusicBeatState
+ 			case 'tank': new Tank();					//Week 7 - Ugh, Guns, Stress
+ 			case 'phillyStreets': new PhillyStreets(); 	//Weekend 1 - Darnell, Lit Up, 2Hot
+ 			case 'phillyBlazin': new PhillyBlazin();	//Weekend 1 - Blazin
++			case 'Forest': new Forest();				//Nocturnal Protocol (web port)
+ 		}
+ 		if(isPixelStage) introSoundsSuffix = '-pixel';
+ 
+@@ -459,6 +460,8 @@ class PlayState extends MusicBeatState
+ 				gf.visible = false;
+ 		}
+ 		
++		stagesFunc(function(stage:BaseStage) stage.scriptCreate());
++
+ 		#if (LUA_ALLOWED || HSCRIPT_ALLOWED)
+ 		// STAGE SCRIPTS
+ 		#if LUA_ALLOWED startLuasNamed('stages/' + curStage + '.lua'); #end
+@@ -582,6 +585,7 @@ class PlayState extends MusicBeatState
+ 		for (event in eventsPushed)
+ 			startHScriptsNamed('custom_events/' + event + '.hx');
+ 		#end
++		stagesFunc(function(stage:BaseStage) stage.scriptCreateLate());
+ 		noteTypes = null;
+ 		eventsPushed = null;
+ 
+@@ -1495,9 +1499,9 @@ class PlayState extends MusicBeatState
+ 	}
+ 
+ 	function eventEarlyTrigger(event:EventNote):Float {
+-		var returnedValue:Null<Float> = callOnScripts('eventEarlyTrigger', [event.event, event.value1, event.value2, event.strumTime], true);
+-		if(returnedValue != null && returnedValue != 0) {
+-			return returnedValue;
++		var ret:Dynamic = callOnScripts('eventEarlyTrigger', [event.event, event.value1, event.value2, event.strumTime], true);
++		if(ret != null && (ret is Float) && ret != 0) {
++			return ret;
+ 		}
+ 
+ 		switch(event.event) {
+@@ -1685,6 +1689,7 @@ class PlayState extends MusicBeatState
+ 			}
+ 		}
+ 		else FlxG.camera.followLerp = 0;
++		stagesFunc(function(stage:BaseStage) stage.scriptUpdate(elapsed));
+ 		callOnScripts('onUpdate', [elapsed]);
+ 
+ 		super.update(elapsed);
+@@ -1705,6 +1710,7 @@ class PlayState extends MusicBeatState
+ 			}
+ 		}
+ 
++		#if !html5 // editors can't save files in the browser
+ 		if(!endingSong && !inCutscene && allowDebugKeys)
+ 		{
+ 			if (controls.justPressed('debug_1'))
+@@ -1712,6 +1718,7 @@ class PlayState extends MusicBeatState
+ 			else if (controls.justPressed('debug_2'))
+ 				openCharacterEditor();
+ 		}
++		#end
+ 
+ 		if (healthBar.bounds.max != null && health > healthBar.bounds.max)
+ 			health = healthBar.bounds.max;
+@@ -1783,6 +1790,7 @@ class PlayState extends MusicBeatState
+ 				notes.insert(0, dunceNote);
+ 				dunceNote.spawned = true;
+ 
++				stagesFunc(function(stage:BaseStage) stage.scriptSpawnNote(dunceNote));
+ 				callOnLuas('onSpawnNote', [notes.members.indexOf(dunceNote), dunceNote.noteData, dunceNote.noteType, dunceNote.isSustainNote, dunceNote.strumTime]);
+ 				callOnHScript('onSpawnNote', [dunceNote]);
+ 
+@@ -1866,6 +1874,7 @@ class PlayState extends MusicBeatState
+ 		#end
+ 
+ 		setOnScripts('botPlay', cpuControlled);
++		stagesFunc(function(stage:BaseStage) stage.scriptUpdatePost(elapsed));
+ 		callOnScripts('onUpdatePost', [elapsed]);
+ 	}
+ 
+@@ -3250,7 +3259,7 @@ class PlayState extends MusicBeatState
+ 	public function playerDance():Void
+ 	{
+ 		var anim:String = boyfriend.getAnimationName();
+-		if(boyfriend.holdTimer > Conductor.stepCrochet * (0.0011 #if FLX_PITCH / FlxG.sound.music.pitch #end) * boyfriend.singDuration && anim.startsWith('sing') && !anim.endsWith('miss'))
++		if(boyfriend.holdTimer > Conductor.stepCrochet * (0.0011 #if FLX_PITCH / playbackRate #end) * boyfriend.singDuration && anim.startsWith('sing') && !anim.endsWith('miss'))
+ 			boyfriend.dance();
+ 	}
+ 
+diff --git a/source/states/TitleState.hx b/source/states/TitleState.hx
+index 25d281e..b5e60df 100644
+--- a/source/states/TitleState.hx
++++ b/source/states/TitleState.hx
+@@ -95,6 +95,26 @@ class TitleState extends MusicBeatState
+ 		}
+ 
+ 		FlxG.mouse.visible = false;
++		#if WEB_AUTOTEST
++		{
++			var q:String = js.Browser.location.search;
++			if (q.indexOf('autotest') >= 0)
++			{
++				backend.WeekData.reloadWeekFiles(false);
++				Difficulty.list = ['Hard'];
++				backend.Song.loadFromJson('nocturnal-protocol-hard', 'nocturnal-protocol');
++				PlayState.isStoryMode = false;
++				PlayState.storyDifficulty = 0;
++				ClientPrefs.data.gameplaySettings.set('botplay', q.indexOf('bot') >= 0);
++				var t = ~/t=([0-9]+)/;
++				if (t.match(q)) PlayState.startOnTime = Std.parseFloat(t.matched(1));
++				FlxG.sound.playMusic(Paths.music('freakyMenu'), 0);
++				LoadingState.prepareToSong();
++				LoadingState.loadAndSwitchState(new PlayState());
++				return;
++			}
++		}
++		#end
+ 		#if FREEPLAY
+ 		MusicBeatState.switchState(new FreeplayState());
+ 		#elseif CHARTING
+diff --git a/source/states/editors/content/FileDialogHandler.hx b/source/states/editors/content/FileDialogHandler.hx
+index 9923dce..0c7f0de 100644
+--- a/source/states/editors/content/FileDialogHandler.hx
++++ b/source/states/editors/content/FileDialogHandler.hx
+@@ -6,7 +6,7 @@ import openfl.events.IOErrorEvent;
+ import flash.net.FileFilter;
+ 
+ import haxe.Exception;
+-import sys.io.File;
++#if sys import sys.io.File; #end
+ import lime.ui.*;
+ 
+ import flixel.FlxBasic;
+@@ -103,7 +103,7 @@ class FileDialogHandler extends FlxBasic
+ 	{
+ 		@:privateAccess
+ 		this.path = _fileRef.__path;
+-		this.data = File.getContent(this.path);
++		#if sys this.data = File.getContent(this.path); #end
+ 		this.completed = true;
+ 		trace('Loaded file from: $path');
+ 
+@@ -231,8 +231,8 @@ class FileReferenceCustom extends FileReference
+ 			modificationDate = Date.fromTime(file.lastModified);
+ 			creationDate = modificationDate;
+ 			size = file.size;
+-			type = "." + Path.extension(file.name);
+-			name = Path.withoutDirectory(file.name);
++			type = "." + haxe.io.Path.extension(file.name);
++			name = haxe.io.Path.withoutDirectory(file.name);
+ 			__path = file.name;
+ 			dispatchEvent(new Event(Event.SELECT));
+ 		}
+diff --git a/source/states/editors/content/PreloadListSubState.hx b/source/states/editors/content/PreloadListSubState.hx
+index 399f934..e068784 100644
+--- a/source/states/editors/content/PreloadListSubState.hx
++++ b/source/states/editors/content/PreloadListSubState.hx
+@@ -111,7 +111,7 @@ class PreloadListSubState extends MusicBeatSubstate implements PsychUIEvent
+ 
+ 		function addToList(path:Path, isFolder:Bool)
+ 		{
+-			var exePath:String = Sys.getCwd().replace('\\', '/');
++			var exePath:String = #if sys Sys.getCwd().replace('\\', '/') #else '' #end;
+ 			if(path.dir.startsWith(exePath))
+ 			{
+ 				var pathStr:String = path.dir.substr(exePath.length);
+diff --git a/source/states/stages/Forest.hx b/source/states/stages/Forest.hx
+new file mode 100644
+index 0000000..7c883f7
+--- /dev/null
++++ b/source/states/stages/Forest.hx
+@@ -0,0 +1,735 @@
++package states.stages;
++
++import flixel.FlxBasic;
++import flixel.FlxObject;
++import flixel.text.FlxText;
++import flixel.text.FlxText.FlxTextBorderStyle;
++import flixel.tweens.FlxEase.EaseFunction;
++import objects.Note;
++import psychlua.ModchartSprite;
++
++/**
++ * "Nocturnal Protocol (Fan Recreation)" — hardcoded web port.
++ *
++ * The browser build can't run Lua, so every script from the mod is translated
++ * here 1:1, keeping the same callback order Psych uses for Lua scripts:
++ *   scripts/letterbox.lua, scripts/icons.lua  (global scripts)
++ *   stages/Forest.lua                         (stage script)
++ *   custom_notetypes/CustardNote.lua          (note type)
++ *   custom_events/*.lua                       (events)
++ */
++class Forest extends BaseStage
++{
++	var ps(get, never):PlayState;
++	inline function get_ps():PlayState return PlayState.instance;
++
++	// ---------------------------------------------------------------------
++	// Tiny stand-in for the Lua sprite/tween/timer API
++	// ---------------------------------------------------------------------
++	var sprites:Map<String, FlxSprite> = [];
++	var tweens:Map<String, FlxTween> = [];
++	var timers:Map<String, FlxTimer> = [];
++
++	function makeSprite(tag:String, image:String, x:Float, y:Float):ModchartSprite
++	{
++		removeSprite(tag);
++		var spr = new ModchartSprite(x, y);
++		if (image != null && image.length > 0) spr.loadGraphic(Paths.image(image));
++		spr.active = true;
++		sprites.set(tag, spr);
++		return spr;
++	}
++
++	function makeAnimatedSprite(tag:String, image:String, x:Float, y:Float):ModchartSprite
++	{
++		removeSprite(tag);
++		var spr = new ModchartSprite(x, y);
++		spr.frames = Paths.getSparrowAtlas(image);
++		sprites.set(tag, spr);
++		return spr;
++	}
++
++	function addAnimByPrefix(spr:ModchartSprite, name:String, prefix:String, fps:Float, loop:Bool)
++	{
++		spr.animation.addByPrefix(name, prefix, fps, loop);
++		if (spr.animation.curAnim == null) spr.playAnim(name, true);
++	}
++
++	function scaleObject(spr:FlxSprite, sx:Float, sy:Float)
++	{
++		if (spr == null) return;
++		spr.scale.set(sx, sy);
++		spr.updateHitbox();
++	}
++
++	function setCamera(obj:FlxBasic, cam:String)
++	{
++		obj.cameras = [switch (cam) { case 'hud': camHUD; case 'other': camOther; default: camGame; }];
++	}
++
++	function addSprite(tag:String, front:Bool)
++	{
++		var spr = sprites.get(tag);
++		if (spr == null) return;
++		if (front) ps.add(spr);
++		else
++		{
++			var low:Int = ps.members.indexOf(ps.boyfriendGroup);
++			for (g in [ps.dadGroup, ps.gfGroup])
++			{
++				var i = ps.members.indexOf(g);
++				if (i >= 0 && i < low) low = i;
++			}
++			ps.insert(low, spr);
++		}
++	}
++
++	function removeSprite(tag:String)
++	{
++		var spr = sprites.get(tag);
++		if (spr == null) return;
++		ps.remove(spr, true);
++		sprites.remove(tag);
++		spr.destroy();
++	}
++
++	inline function spr(tag:String):FlxSprite return sprites.get(tag);
++
++	function tween(tag:String, target:Dynamic, values:Dynamic, duration:Float, ease:EaseFunction)
++	{
++		if (target == null) return;
++		var old = tweens.get(tag);
++		if (old != null) { old.cancel(); old.destroy(); }
++		tweens.set(tag, FlxTween.tween(target, values, duration, {ease: ease, onComplete: function(_) {
++			tweens.remove(tag);
++			onTweenCompleted(tag);
++		}}));
++	}
++
++	function runTimer(tag:String, time:Float)
++	{
++		cancelTimer(tag);
++		timers.set(tag, new FlxTimer().start(time, function(_) {
++			timers.remove(tag);
++			onTimerCompleted(tag);
++		}));
++	}
++
++	function cancelTimer(tag:String)
++	{
++		var t = timers.get(tag);
++		if (t != null) { t.cancel(); t.destroy(); timers.remove(tag); }
++	}
++
++	// ---------------------------------------------------------------------
++	// State from the scripts
++	// ---------------------------------------------------------------------
++	// letterbox.lua
++	static inline var playerOffsetX:Float = -70;
++	static inline var opponentOffsetX:Float = -1000;
++
++	// Forest.lua
++	static inline var growTime:Float = 60;
++	static inline var maxScale:Float = 6;
++	static inline var startTime:Float = 10;
++	var growing = false;
++	var appeared = false;
++	var tinkyScale:Float = 1;
++	var tinkyScale2:Float = 1;
++	static inline var tinkyX:Float = 800;
++	static inline var tinkyY:Float = 1100;
++	static inline var tinkyStartScale:Float = 1.2;
++	static inline var custardGrowTime:Float = 18;
++	static inline var custardMaxScale:Float = 2.3;
++	var custardGrowing = false;
++	static inline var custardScale:Float = 0.3;
++	static inline var custardX:Float = 990;
++	static inline var custardY:Float = 1200;
++
++	// CustardNote.lua
++	var custardCount:Int = 0;
++	var custardText:FlxText;
++
++	// CamSwing.lua
++	var camSwing = false;
++	var swingTime:Float = 1;
++	static inline var swingSpeed:Float = 0.8;
++	static inline var swingAmount:Float = 1;
++
++	// CharSwing.lua
++	var charSwing = false;
++	var swingProgress:Float = 1;
++	var swingDuration:Float = 0;
++	var swingStart:Float = 5;
++	var swingTarget:Float = -5;
++
++	// Screamers.lua
++	var screamersOn = false;
++	var lastImage:Int = 0;
++	var dbgT:Float = 0;
++
++	// ---------------------------------------------------------------------
++	// onCreate — stage + global scripts (called where Psych runs stage Lua)
++	// ---------------------------------------------------------------------
++	override function scriptCreate()
++	{
++		// letterbox.lua
++		var barWidth = 160;
++		var l = makeSprite('leftBar', '', 0, 0);
++		l.makeGraphic(barWidth, FlxG.height, FlxColor.BLACK);
++		setCamera(l, 'other');
++		addSprite('leftBar', true);
++		var r = makeSprite('rightBar', '', FlxG.width - barWidth, 0);
++		r.makeGraphic(barWidth, FlxG.height, FlxColor.BLACK);
++		setCamera(r, 'other');
++		addSprite('rightBar', true);
++
++		// Forest.lua
++		var forest = makeSprite('forest', 'dayforest/forest', 44, 280);
++		forest.scrollFactor.set(1, 1);
++		scaleObject(forest, 2, 2);
++		addSprite('forest', false);
++
++		var chase = makeAnimatedSprite('tinkychase', 'characters/tinkyrun', tinkyX, tinkyY);
++		for (a in ['idle', 'left', 'down', 'up', 'right']) addAnimByPrefix(chase, a, a, 24, false);
++		scaleObject(chase, tinkyStartScale, tinkyStartScale);
++		addSprite('tinkychase', false);
++		chase.visible = false;
++		chase.playAnim('idle', true);
++
++		var chase2 = makeAnimatedSprite('tinkychase2', 'characters/tinkyrun', 350, 800);
++		for (a in ['idle', 'left', 'down', 'up', 'right']) addAnimByPrefix(chase2, a, a, 24, false);
++		scaleObject(chase2, 1.5, 1.5);
++		addSprite('tinkychase2', false);
++		chase2.visible = false;
++		chase2.playAnim('idle', true);
++
++		var custard = makeSprite('custard', 'dayforest/custard', custardX, custardY);
++		custard.scrollFactor.set(1, 1);
++		scaleObject(custard, custardScale, custardScale);
++		custard.visible = false;
++		addSprite('custard', false);
++	}
++
++	// ---------------------------------------------------------------------
++	// onCreate — note type + events (called after the HUD exists)
++	// ---------------------------------------------------------------------
++	override function scriptCreateLate()
++	{
++		// CustardNote.lua
++		var fin = makeAnimatedSprite('guardianfinal', 'characters/guardianfinal', -200, 225);
++		addAnimByPrefix(fin, 'idle', 'idle', 24, true);
++		addAnimByPrefix(fin, 'walk', 'walk', 24, false);
++		scaleObject(fin, 2.95, 2.95);
++		fin.visible = false;
++		fin.playAnim('idle', true);
++
++		// makeLuaText defaults, then the script's tweaks
++		custardText = new FlxText(320, 600, 600, 'a player has collected 0/10 custards', 16);
++		custardText.setFormat(Paths.font("vcr.ttf"), 16, FlxColor.WHITE, CENTER, FlxTextBorderStyle.OUTLINE, FlxColor.BLACK);
++		custardText.scrollFactor.set();
++		custardText.borderSize = 2;
++		custardText.cameras = [camOther];
++		custardText.size = 28;
++		custardText.borderSize = 2;
++		custardText.borderColor = FlxColor.BLACK;
++		ps.add(custardText);
++		custardText.alpha = 0;
++
++		// Events, in the order Psych loads them (first appearance in the chart)
++		// CamSwing.lua has no onCreate.
++
++		// BlackScreen.lua
++		var black = makeSprite('blackScreen', '', 0, 0);
++		black.makeGraphic(FlxG.width, FlxG.height, FlxColor.BLACK);
++		setCamera(black, 'hud');
++		black.alpha = 0;
++		addSprite('blackScreen', true);
++
++		// TinkyScreamer.lua
++		var ts = makeSprite('tinkyscreamer', 'dropimages/image3', 120, 0);
++		setCamera(ts, 'hud');
++		ts.alpha = 0;
++		addSprite('tinkyscreamer', true);
++		scaleObject(ts, 2.7, 2.7);
++
++		// Screamers.lua
++		for (i in 1...6)
++		{
++			var img = makeSprite('img$i', 'dropimages/image$i', 120, 0);
++			setCamera(img, 'hud');
++			scaleObject(img, 2.7, 2.7);
++			img.alpha = 0;
++			addSprite('img$i', true);
++		}
++		// CharSwing, PopUp, Tinky have no onCreate. Preload their images.
++		for (p in ['pop-ups/tinky', 'pop-ups/dipsy', 'pop-ups/lala', 'pop-ups/po', 'tinky', 'dayforest/text',
++			'dayforest/forest2', 'dayforest/forest3', 'dayforest/forest4', 'dayforest/forest5', 'screeneffect',
++			'endings/goodEnding', 'endings/badEnding'])
++			Paths.image(p);
++	}
++
++	// ---------------------------------------------------------------------
++	// onCreatePost
++	// ---------------------------------------------------------------------
++	override function createPost()
++	{
++		// letterbox.lua
++		for (i in 0...4)
++		{
++			var p = ps.playerStrums.members[i];
++			if (p != null) p.x += playerOffsetX;
++			var o = ps.opponentStrums.members[i];
++			if (o != null) o.x += opponentOffsetX;
++		}
++
++		// Forest.lua
++		for (o in ps.opponentStrums.members) if (o != null) o.visible = false;
++		ps.scoreTxt.visible = false;
++		game.timeTxt.visible = false;
++		ps.iconP2.alpha = 0;
++		dad.alpha = 0;
++		boyfriend.alpha = 0;
++		boyfriend.scale.set(1, 1);
++
++		// CustardNote.lua
++		for (note in unspawnNotes)
++		{
++			if (note.noteType == 'CustardNote')
++			{
++				note.texture = 'custard';
++				note.isSustainNote = false;
++				note.scale.set(0.7, 0.7);
++				note.noAnimation = true;
++			}
++		}
++	}
++
++	// letterbox.lua onSpawnNote
++	override function scriptSpawnNote(note:Note)
++	{
++		note.x += note.mustPress ? playerOffsetX : opponentOffsetX;
++	}
++
++	// ---------------------------------------------------------------------
++	// onSongStart
++	// ---------------------------------------------------------------------
++	override function startSong()
++	{
++		var text = makeSprite('text', 'dayforest/text', 610, 10);
++		text.scrollFactor.set(1, 1);
++		scaleObject(text, 0.6, 0.6);
++		setCamera(text, 'other');
++		addSprite('text', true);
++	}
++
++	// ---------------------------------------------------------------------
++	// onUpdate / onUpdatePost
++	// ---------------------------------------------------------------------
++	override function scriptUpdate(elapsed:Float)
++	{
++		// Forest.lua
++		var songPos = Conductor.songPosition / 1000;
++		if (songPos >= startTime && !appeared)
++		{
++			appeared = true;
++			growing = true;
++			tween('bfFadeIn', boyfriend, {alpha: 1}, 4, FlxEase.linear);
++		}
++
++		if (growing && boyfriend != null)
++		{
++			var currentX = boyfriend.scale.x;
++			if (currentX < maxScale)
++			{
++				var step = (maxScale - 2) / growTime;
++				var newScale = Math.min(currentX + step * elapsed, maxScale);
++				boyfriend.scale.set(newScale, newScale);
++			}
++		}
++
++		for (tag in ['tinkychase', 'tinkychase2'])
++		{
++			var c = spr(tag);
++			if (c == null || !c.visible) continue;
++			var first = tag == 'tinkychase';
++			var minS = first ? 0.6 : 0.4;
++			var maxS = first ? 2.4 : 1.85;
++			var base = first ? tinkyStartScale : 1.5;
++			var target = maxS - ((maxS - minS) * (ps.health / 2));
++			var cur = first ? tinkyScale : tinkyScale2;
++			cur = cur + (target - cur) * (elapsed * 5);
++			if (first) tinkyScale = cur; else tinkyScale2 = cur;
++
++			var cx = c.x + c.width / 2;
++			var cy = c.y + c.height / 2;
++			scaleObject(c, base * cur, base * cur);
++			c.x = cx - c.width / 2;
++			c.y = cy - c.height / 2;
++		}
++
++		if (custardGrowing)
++		{
++			var c = spr('custard');
++			if (c != null)
++			{
++				if (c.scale.x < custardMaxScale)
++				{
++					var step = (custardMaxScale - 0.1) / custardGrowTime;
++					var ns = Math.min(c.scale.x + step * elapsed, custardMaxScale);
++					c.scale.set(ns, ns);
++				}
++				else
++				{
++					custardGrowing = false;
++					tween('custardFall', c, {y: FlxG.height + 2000}, 1.3, FlxEase.cubeIn);
++				}
++			}
++		}
++
++		// CustardNote.lua
++		var fin = spr('guardianfinal');
++		if (fin != null && fin.animation.curAnim != null && fin.animation.curAnim.name == 'walk' && fin.animation.curAnim.finished)
++			removeSprite('guardianfinal');
++
++		// CamSwing.lua
++		if (camSwing)
++		{
++			swingTime += elapsed * swingSpeed;
++			camGame.angle = Math.sin(swingTime) * swingAmount;
++		}
++
++		// CharSwing.lua
++		if (charSwing)
++		{
++			swingProgress = Math.min(swingProgress + elapsed / swingDuration, 1);
++			var eased = Math.pow(swingProgress, 4);
++			var angle = swingStart + (swingTarget - swingStart) * eased;
++			boyfriend.angle = angle;
++			dad.angle = angle;
++			var f4 = spr('forest4');
++			if (f4 != null) f4.angle = angle;
++		}
++	}
++
++	override function scriptUpdatePost(elapsed:Float)
++	{
++		#if WEB_AUTOTEST
++		dbgT += elapsed;
++		if (dbgT > 1) { dbgT = 0;
++			trace('DBG pos=${Conductor.songPosition} hud.a=${camHUD.alpha} hud.vis=${camHUD.visible} game.a=${camGame.alpha} game.zoom=${camGame.zoom} scroll=${camGame.scroll} bf=${boyfriend.x},${boyfriend.y},a${boyfriend.alpha},s${boyfriend.scale.x} hb=${ps.healthBar.visible},${ps.healthBar.alpha} strum0=${ps.playerStrums.members[0].x},${ps.playerStrums.members[0].alpha},${ps.playerStrums.members[0].visible} cams=${FlxG.cameras.list.length} black=${spr('blackScreen').alpha} forest=${spr('forest') != null ? spr('forest').visible + ',' + spr('forest').x : 'null'} fx=${FlxG.camera.flashSprite.visible}');
++		}
++		#end
++		// icons.lua
++		ps.iconP1.x = 880;
++		ps.iconP2.x = 280;
++	}
++
++	// ---------------------------------------------------------------------
++	// onStepHit
++	// ---------------------------------------------------------------------
++	// Psych only fires stepHit once per frame, so on a slow frame a step can be
++	// skipped entirely. Replay every step we missed so no cue is ever lost.
++	var lastStepDone:Int = -1;
++	override function stepHit()
++	{
++		if (curStep <= lastStepDone) return;
++		for (s in (lastStepDone + 1)...(curStep + 1)) doStep(s);
++		lastStepDone = curStep;
++	}
++
++	function doStep(curStep:Int)
++	{
++		// Forest.lua
++		switch (curStep)
++		{
++			case 32:
++				removeSprite('text');
++
++			case 318:
++				growing = false;
++				boyfriend.scale.set(1, 1);
++				removeSprite('forest');
++
++			case 335:
++				var f = makeSprite('forest2', 'dayforest/forest2', 95, 280);
++				scaleObject(f, 2, 2);
++				addSprite('forest2', false);
++				ps.iconP2.alpha = 1;
++				dad.alpha = 1;
++
++			case 608:
++				removeSprite('forest2');
++				spr('tinkychase').visible = true;
++				dad.alpha = 0;
++				addScreenEffect();
++
++			case 736:
++				var f = makeSprite('forest3', 'dayforest/forest3', 95, 280);
++				scaleObject(f, 2, 2);
++				f.alpha = 0.2;
++				addSprite('forest3', false);
++				dad.alpha = 1;
++				spr('tinkychase').visible = false;
++				removeSprite('screeneffect');
++
++			case 864:
++				removeSprite('forest3');
++				var f = makeSprite('forest4', 'dayforest/forest4', 95, 280);
++				scaleObject(f, 2, 2);
++				f.alpha = 0.1;
++				addSprite('forest4', false);
++				boyfriend.alpha = 0;
++
++			case 896 | 960:
++				boyfriend.alpha = 1;
++				dad.alpha = 0;
++
++			case 928:
++				boyfriend.alpha = 0;
++				dad.alpha = 1;
++
++			case 992:
++				removeSprite('forest4');
++				ps.iconP2.alpha = 0;
++				var f = makeSprite('forest5', 'dayforest/forest5', 95, 280);
++				scaleObject(f, 2, 2);
++				f.alpha = 0.2;
++				addSprite('forest5', false);
++				spr('custard').visible = true;
++				custardGrowing = true;
++				boyfriend.alpha = 0;
++
++			case 1120:
++				ps.iconP2.alpha = 1;
++				removeSprite('forest5');
++				var c2 = spr('tinkychase2');
++				c2.visible = true;
++				c2.x = 100;
++				c2.y = 740;
++				scaleObject(c2, 1.5, 1.5);
++				boyfriend.alpha = 1;
++				addScreenEffect();
++
++			case 1248:
++				spr('tinkychase2').visible = false;
++				boyfriend.alpha = 0;
++				removeSprite('screeneffect');
++		}
++
++		// CustardNote.lua
++		if (curStep == 1248)
++		{
++			if (custardCount == 10)
++			{
++				var g = makeSprite('goodEnding', 'endings/goodEnding', 95, 280);
++				scaleObject(g, 2, 2);
++				addSprite('goodEnding', true);
++				addSprite('guardianfinal', true);
++				var fin:ModchartSprite = cast spr('guardianfinal');
++				if (fin != null)
++				{
++					fin.visible = true;
++					fin.playAnim('idle', true);
++				}
++				ps.iconP2.alpha = 0;
++			}
++			else
++			{
++				var b = makeSprite('badEnding', 'endings/badEnding', 95, 280);
++				scaleObject(b, 2, 2);
++				addSprite('badEnding', true);
++				ps.iconP1.alpha = 0;
++				ps.health = 0.01;
++			}
++		}
++		if (curStep == 1272 && custardCount == 10)
++		{
++			var fin:ModchartSprite = cast spr('guardianfinal');
++			if (fin != null) fin.playAnim('walk', true);
++		}
++	}
++
++	function addScreenEffect()
++	{
++		var s = makeSprite('screeneffect', 'screeneffect', 135, -20);
++		scaleObject(s, 0.67, 0.5);
++		setCamera(s, 'other');
++		addSprite('screeneffect', true);
++	}
++
++	// ---------------------------------------------------------------------
++	// onBeatHit
++	// ---------------------------------------------------------------------
++	override function beatHit()
++	{
++		// Forest.lua
++		for (tag in ['tinkychase', 'tinkychase2'])
++		{
++			var c:ModchartSprite = cast spr(tag);
++			if (c != null && c.visible && c.animation.curAnim != null && c.animation.curAnim.finished)
++				c.playAnim('idle', true);
++		}
++
++		// Screamers.lua
++		if (screamersOn)
++		{
++			var n = lastImage;
++			while (n == lastImage) n = FlxG.random.int(1, 5);
++			lastImage = n;
++			for (i in 1...6) spr('img$i').alpha = 0;
++			spr('img$n').alpha = 0.3;
++		}
++
++		// CharSwing.lua
++		if (charSwing)
++		{
++			swingStart = swingTarget;
++			swingTarget = -swingTarget;
++			swingProgress = 0;
++		}
++	}
++
++	// ---------------------------------------------------------------------
++	// Notes
++	// ---------------------------------------------------------------------
++	override function opponentNoteHit(note:Note)
++	{
++		// Forest.lua
++		for (tag in ['tinkychase', 'tinkychase2'])
++		{
++			var c:ModchartSprite = cast spr(tag);
++			if (c != null && c.visible)
++				c.playAnim(['left', 'down', 'up', 'right'][note.noteData], true);
++		}
++
++		// icons.lua
++		if (!note.isSustainNote && ps.health > 0.25)
++			ps.health -= 0.019;
++	}
++
++	override function goodNoteHit(note:Note)
++	{
++		// CustardNote.lua
++		if (note.noteType == 'CustardNote')
++		{
++			ps.health += 0.23;
++			custardCount++;
++			custardText.text = 'a player has collected $custardCount/10 custards';
++			custardText.alpha = 1;
++			cancelTimer('hideCustardText');
++			runTimer('hideCustardText', 2);
++		}
++	}
++
++	// ---------------------------------------------------------------------
++	// Events
++	// ---------------------------------------------------------------------
++	override function eventCalled(eventName:String, value1:String, value2:String, flValue1:Null<Float>, flValue2:Null<Float>, strumTime:Float)
++	{
++		#if WEB_AUTOTEST if (eventName != 'Add Camera Zoom') trace('EVENT $eventName $value1 $value2 at ${Conductor.songPosition} (strum $strumTime)'); #end
++		switch (eventName)
++		{
++			case 'CamSwing':
++				if (value1 == 'on') camSwing = true;
++				else
++				{
++					camSwing = false;
++					camGame.angle = 0;
++				}
++
++			case 'BlackScreen':
++				var speed:Float = Std.parseFloat(value2);
++				if (Math.isNaN(speed)) speed = 0;
++				var black = spr('blackScreen');
++				// A new BlackScreen command always overrides any fade still running
++				// (on slow frames an old fade could otherwise finish late and win).
++				for (t in ['blackFadeIn', 'blackFadeOut'])
++				{
++					var tw = tweens.get(t);
++					if (tw != null) { tw.cancel(); tweens.remove(t); }
++				}
++				if (value1 == 'on')
++				{
++					if (speed > 0) tween('blackFadeIn', black, {alpha: 1}, speed, FlxEase.linear);
++					else black.alpha = 1;
++				}
++				if (value1 == 'off' || value1 == '')
++				{
++					if (speed > 0) tween('blackFadeOut', black, {alpha: 0}, speed, FlxEase.linear);
++					else black.alpha = 0;
++				}
++
++			case 'TinkyScreamer':
++				if (value1 == 'on')
++				{
++					spr('tinkyscreamer').alpha = 1;
++					runTimer('hideTinky', 0.05);
++				}
++
++			case 'Screamers':
++				if (value1 == 'on') screamersOn = true;
++				else if (value1 == 'off')
++				{
++					screamersOn = false;
++					for (i in 1...6) spr('img$i').alpha = 0;
++				}
++
++			case 'CharSwing':
++				if (value1 == 'on')
++				{
++					charSwing = true;
++					swingDuration = Conductor.crochet / 1000;
++				}
++				else
++				{
++					charSwing = false;
++					boyfriend.angle = 0;
++					dad.angle = 0;
++					var f4 = spr('forest4');
++					if (f4 != null) f4.angle = 0;
++				}
++
++			case 'PopUp':
++				var p = makeSprite('popupImage', 'pop-ups/' + value1, 290, 40);
++				setCamera(p, 'other');
++				scaleObject(p, 2.7, 2.7);
++				p.alpha = 1;
++				addSprite('popupImage', true);
++				tween('popupScaleX', p.scale, {x: 3.9}, 1, FlxEase.quadOut);
++				tween('popupScaleY', p.scale, {y: 3.9}, 1, FlxEase.quadOut);
++				tween('popupFade', p, {alpha: 0}, 1, FlxEase.linear);
++
++			case 'Tinky':
++				if (value1 == 'on')
++				{
++					var t = makeSprite('tinkiscreamer', 'tinky', 650, 350);
++					setCamera(t, 'hud');
++					scaleObject(t, 0.01, 0.01);
++					addSprite('tinkiscreamer', true);
++					tween('screamerScaleX', t.scale, {x: 6}, 0.6, FlxEase.quintIn);
++					tween('screamerScaleY', t.scale, {y: 6}, 0.6, FlxEase.quintIn);
++					runTimer('removeScreamer', 0.58);
++				}
++		}
++	}
++
++	function onTweenCompleted(tag:String)
++	{
++		switch (tag)
++		{
++			case 'custardFall': removeSprite('custard');
++			case 'popupFade': removeSprite('popupImage');
++			case 'screamerScaleY': removeSprite('tinkiscreamer');
++		}
++	}
++
++	function onTimerCompleted(tag:String)
++	{
++		switch (tag)
++		{
++			case 'hideCustardText': custardText.alpha = 0;
++			case 'hideTinky': spr('tinkyscreamer').alpha = 0;
++		}
++	}
++}

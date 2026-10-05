@@ -1,0 +1,8 @@
+<!DOCTYPE codename-engine-character>
+<character x="-200" y="-370" sprite="dipsy_1_v2" camx="-150" camy="150" icon="thelion" color="#3E673C">
+	<anim name="idle" anim="idle" x="2.88" fps="10"/>
+	<anim name="singDOWN" anim="down" x="-2.99" y="-16.37" fps="6"/>
+	<anim name="singRIGHT" anim="right" x="-45" y="6" fps="6"/>
+	<anim name="singLEFT" anim="left" y="-11" fps="6"/>
+	<anim name="singUP" anim="up" x="2" y="-13" fps="6"/>
+</character>

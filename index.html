@@ -1,0 +1,654 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boring game site</title>
+<meta name="description" content="Boring game site — play browser games.">
+<link rel="icon" type="image/png" href="favicon.png">
+<style>
+  @font-face {
+    font-family: "VCR";
+    src: url("vrc%20font.ttf") format("truetype");
+    font-display: swap;
+  }
+
+  :root {
+    --bg: #05060a;
+    --bg-2: #0b0d16;
+    --panel: #10131f;
+    --line: #1e2438;
+    --text: #e8ecf5;
+    --muted: #7d86a3;
+    --accent: #2f8dff;      /* favicon blue */
+    --accent-2: #8fd0ff;
+    --red: #ff2e4d;
+    --cyan: #19f0ff;
+    --ease: cubic-bezier(.2,.8,.2,1);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    font-family: "VCR", "Courier New", monospace;
+    background: var(--bg);
+    color: var(--text);
+    overflow-x: hidden;
+    letter-spacing: .04em;
+    -webkit-font-smoothing: antialiased;
+  }
+  button, input { font: inherit; color: inherit; letter-spacing: inherit; }
+
+  /* ---------- CRT overlays ---------- */
+  .crt-scan, .crt-vignette, .crt-noise {
+    position: fixed; inset: 0; pointer-events: none; z-index: 50;
+  }
+  .crt-scan {
+    background: repeating-linear-gradient(to bottom,
+      rgba(255,255,255,.035) 0 1px, transparent 1px 3px);
+    mix-blend-mode: overlay;
+  }
+  .crt-scan::after {
+    content: ""; position: absolute; left: 0; right: 0; height: 120px;
+    background: linear-gradient(to bottom, transparent, rgba(143,208,255,.06), transparent);
+    animation: roll 7s linear infinite;
+  }
+  .crt-vignette {
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,.75) 100%);
+  }
+  .crt-noise {
+    opacity: .07;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+    animation: noise .4s steps(4) infinite;
+  }
+  @keyframes roll { from { top: -120px; } to { top: 100%; } }
+  @keyframes noise {
+    0% { transform: translate(0,0); } 25% { transform: translate(-8px,6px); }
+    50% { transform: translate(6px,-4px); } 75% { transform: translate(-4px,-8px); }
+  }
+
+  /* ---------- Boot / CRT power-on ---------- */
+  .boot {
+    position: fixed; inset: 0; z-index: 100; background: #000;
+    display: grid; place-items: center;
+    animation: bootOut .5s var(--ease) 1.6s forwards;
+  }
+  .boot-line {
+    width: 100%; height: 2px; background: #fff;
+    box-shadow: 0 0 20px 4px var(--accent-2);
+    animation: bootLine 1.2s var(--ease) forwards;
+  }
+  .boot-text {
+    position: absolute; font-size: 14px; color: var(--accent-2);
+    opacity: 0; animation: blink .25s steps(1) .9s 3 forwards;
+  }
+  @keyframes bootLine {
+    0% { transform: scaleX(0); height: 2px; }
+    50% { transform: scaleX(1); height: 2px; }
+    100% { transform: scaleX(1); height: 100vh; opacity: 0; }
+  }
+  @keyframes bootOut { to { opacity: 0; visibility: hidden; } }
+  @keyframes blink { 0% { opacity: 1; } 50% { opacity: 0; } 100% { opacity: 1; } }
+
+  /* ---------- Layout ---------- */
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 0 24px; }
+
+  header.top {
+    position: sticky; top: 0; z-index: 20;
+    background: linear-gradient(to bottom, rgba(5,6,10,.95), rgba(5,6,10,.75));
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+  }
+  .top-inner {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; height: 68px;
+  }
+  .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; color: var(--text); }
+  .brand img { width: 36px; height: 36px; border-radius: 8px; image-rendering: auto; }
+  .brand span { font-size: 20px; text-shadow: -1.5px 0 var(--red), 1.5px 0 var(--cyan); }
+  .osd { display: flex; align-items: center; gap: 18px; font-size: 14px; color: var(--muted); }
+  .osd .rec { color: var(--text); display: flex; align-items: center; gap: 8px; }
+  .osd .rec i {
+    width: 10px; height: 10px; border-radius: 50%; background: var(--red);
+    box-shadow: 0 0 10px var(--red); animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 50% { opacity: .25; } }
+
+  /* ---------- Hero ---------- */
+  .hero { padding: 72px 0 40px; position: relative; }
+  .hero small { color: var(--accent-2); font-size: 14px; display: block; margin-bottom: 14px; }
+  .hero h1 {
+    font-size: clamp(40px, 8vw, 92px); font-weight: normal; line-height: .95;
+    position: relative; display: inline-block;
+  }
+  .glitch { position: relative; }
+  .glitch::before, .glitch::after {
+    content: attr(data-text); position: absolute; inset: 0; pointer-events: none;
+  }
+  .glitch::before { color: var(--red); transform: translate(-3px,0); mix-blend-mode: screen; animation: gl1 3.2s infinite steps(1); }
+  .glitch::after  { color: var(--cyan); transform: translate(3px,0); mix-blend-mode: screen; animation: gl2 2.7s infinite steps(1); }
+  @keyframes gl1 {
+    0%,88%,100% { clip-path: inset(0 0 0 0); transform: translate(-2px,0); }
+    90% { clip-path: inset(20% 0 55% 0); transform: translate(-10px,0); }
+    93% { clip-path: inset(65% 0 10% 0); transform: translate(8px,0); }
+    96% { clip-path: inset(40% 0 40% 0); transform: translate(-5px,0); }
+  }
+  @keyframes gl2 {
+    0%,85%,100% { clip-path: inset(0 0 0 0); transform: translate(2px,0); }
+    87% { clip-path: inset(10% 0 70% 0); transform: translate(10px,0); }
+    91% { clip-path: inset(70% 0 5% 0); transform: translate(-8px,0); }
+  }
+  .hero p { color: var(--muted); max-width: 560px; margin-top: 18px; font-size: 16px; line-height: 1.6; }
+
+  /* ---------- Controls ---------- */
+  .controls {
+    display: flex; align-items: center; justify-content: space-between; gap: 16px;
+    margin: 24px 0 28px; flex-wrap: wrap;
+  }
+  .search {
+    flex: 1 1 320px; max-width: 480px; position: relative;
+  }
+  .search input {
+    width: 100%; height: 50px; padding: 0 16px 0 46px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    outline: none; font-size: 16px; transition: border-color .25s, box-shadow .25s;
+  }
+  .search input::placeholder { color: var(--muted); }
+  .search input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px rgba(47,141,255,.18), 0 0 30px rgba(47,141,255,.15); }
+  .search svg { position: absolute; left: 15px; top: 50%; transform: translateY(-50%); color: var(--muted); }
+  .search kbd {
+    position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+    font: inherit; font-size: 12px; color: var(--muted); border: 1px solid var(--line);
+    border-radius: 5px; padding: 2px 7px;
+  }
+  .count { color: var(--muted); font-size: 14px; }
+  .count b { color: var(--accent-2); font-weight: normal; }
+
+  /* ---------- Grid ---------- */
+  .grid {
+    display: grid; gap: 22px; padding-bottom: 80px;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  }
+  .card {
+    position: relative; border-radius: 14px; overflow: hidden; cursor: pointer;
+    background: var(--panel); border: 1px solid var(--line);
+    transform: translateY(24px); opacity: 0;
+    animation: rise .7s var(--ease) forwards;
+    transition: transform .35s var(--ease), border-color .3s, box-shadow .35s;
+    outline: none; text-align: left; padding: 0;
+    display: flex; flex-direction: column; justify-content: flex-start; align-items: stretch;
+  }
+  .card .thumb { flex: none; width: 100%; }
+  .card .meta { flex: 1; }
+  @keyframes rise { to { transform: translateY(0); opacity: 1; } }
+  .card:hover, .card:focus-visible {
+    transform: translateY(-6px);
+    border-color: var(--accent);
+    box-shadow: 0 18px 40px -12px rgba(47,141,255,.45), 0 0 0 1px rgba(47,141,255,.4);
+  }
+  .card .thumb { position: relative; aspect-ratio: 1 / 1; overflow: hidden; background: #000; }
+  .card img {
+    width: 100%; height: 100%; object-fit: cover; display: block;
+    transition: transform .6s var(--ease), filter .4s;
+    filter: saturate(.9) contrast(1.05);
+  }
+  .card:hover img { transform: scale(1.07); filter: saturate(1.15) contrast(1.1); }
+  /* RGB split on hover */
+  .card .thumb::before, .card .thumb::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background-image: var(--img); background-size: cover; background-position: center;
+    mix-blend-mode: screen; opacity: 0; transition: opacity .25s;
+  }
+  .card .thumb::before { filter: url(#red); }
+  .card .thumb::after  { filter: url(#cyan); }
+  .card:hover .thumb::before { opacity: .55; animation: shiftL .35s steps(2) 2; }
+  .card:hover .thumb::after  { opacity: .55; animation: shiftR .35s steps(2) 2; }
+  @keyframes shiftL { 0% { transform: translateX(-6px); } 100% { transform: translateX(0); } }
+  @keyframes shiftR { 0% { transform: translateX(6px); } 100% { transform: translateX(0); } }
+  .card:hover .thumb::before, .card:hover .thumb::after { transform: translateX(0); }
+
+  .card .scan {
+    position: absolute; inset: 0; pointer-events: none;
+    background: repeating-linear-gradient(to bottom, rgba(0,0,0,.25) 0 1px, transparent 1px 3px);
+  }
+  .card .play {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    background: radial-gradient(circle, rgba(5,6,10,.35), rgba(5,6,10,.7));
+    opacity: 0; transition: opacity .3s;
+  }
+  .card .play span {
+    font-size: 18px; padding: 10px 18px; border: 1px solid var(--text);
+    background: rgba(5,6,10,.6); transform: scale(.85); transition: transform .35s var(--ease);
+  }
+  .card:hover .play, .card:focus-visible .play { opacity: 1; }
+  .card:hover .play span { transform: scale(1); }
+  .card .tag {
+    position: absolute; top: 10px; left: 10px; font-size: 12px;
+    padding: 4px 8px; background: rgba(5,6,10,.8); border: 1px solid var(--line); border-radius: 5px;
+    color: var(--accent-2);
+  }
+  .card .meta { padding: 14px 16px 16px; }
+  .card h3 { font-weight: normal; font-size: 17px; line-height: 1.25; }
+  .card p { color: var(--muted); font-size: 13px; margin-top: 6px; }
+
+  .empty { grid-column: 1 / -1; text-align: center; padding: 60px 0; color: var(--muted); }
+  .empty b { display: block; font-size: 28px; color: var(--text); font-weight: normal; margin-bottom: 8px; }
+
+  footer { border-top: 1px solid var(--line); padding: 26px 0 40px; color: var(--muted); font-size: 13px; }
+
+  /* ---------- Player ---------- */
+  .player {
+    position: fixed; inset: 0; z-index: 40; background: rgba(2,3,6,.92);
+    display: flex; flex-direction: column;
+    opacity: 0; visibility: hidden; transition: opacity .35s var(--ease), visibility .35s;
+  }
+  .player.open { opacity: 1; visibility: visible; }
+  .pbar {
+    height: 60px; flex: none; display: flex; align-items: center; gap: 10px;
+    padding: 0 16px; border-bottom: 1px solid var(--line); background: var(--bg-2);
+    transform: translateY(-100%); transition: transform .45s var(--ease) .05s;
+  }
+  .player.open .pbar { transform: translateY(0); }
+  .pbar .title { flex: 1; min-width: 0; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pbar .title small { color: var(--red); margin-right: 10px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px; height: 38px; padding: 0 14px;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+    cursor: pointer; font-size: 14px; transition: border-color .2s, background .2s, transform .15s;
+    text-decoration: none; white-space: nowrap;
+  }
+  .btn:hover { border-color: var(--accent); background: #141a2c; }
+  .btn:active { transform: scale(.96); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .btn.primary:hover { background: #4a9cff; }
+  .stage {
+    flex: 1; position: relative; padding: 18px; display: grid; place-items: center;
+  }
+  .screen {
+    position: relative; width: 100%; height: 100%; max-width: 1400px;
+    border-radius: 12px; overflow: hidden; background: #000;
+    border: 1px solid var(--line);
+    box-shadow: 0 0 0 1px rgba(47,141,255,.15), 0 30px 80px -20px rgba(47,141,255,.35);
+    transform: scale(.94); opacity: 0;
+    transition: transform .5s var(--ease) .1s, opacity .5s var(--ease) .1s;
+  }
+  .player.open .screen { transform: scale(1); opacity: 1; }
+  .screen iframe { width: 100%; height: 100%; border: 0; display: block; background: #000; }
+  .screen:fullscreen { border-radius: 0; border: 0; max-width: none; }
+  .loading {
+    position: absolute; inset: 0; display: grid; place-items: center; background: #000;
+    transition: opacity .5s; pointer-events: none;
+  }
+  .loading.hide { opacity: 0; }
+  .loading div { text-align: center; color: var(--accent-2); }
+  .loading .bar { width: 220px; height: 6px; border: 1px solid var(--accent-2); margin: 14px auto 0; overflow: hidden; }
+  .loading .bar i { display: block; height: 100%; width: 40%; background: var(--accent-2); animation: load 1.1s ease-in-out infinite; }
+  @keyframes load { 0% { transform: translateX(-100%); } 100% { transform: translateX(260%); } }
+
+
+  /* ---------- Settings ---------- */
+  .gear { margin-left: 4px; }
+  .scrim {
+    position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.55);
+    opacity: 0; visibility: hidden; transition: opacity .3s, visibility .3s;
+  }
+  .scrim.open { opacity: 1; visibility: visible; }
+  .drawer {
+    position: fixed; top: 0; right: 0; bottom: 0; z-index: 61; width: min(380px, 100%);
+    background: var(--bg-2); border-left: 1px solid var(--line);
+    transform: translateX(100%); transition: transform .45s var(--ease);
+    display: flex; flex-direction: column;
+  }
+  .drawer.open { transform: translateX(0); }
+  .drawer-head { display: flex; align-items: center; justify-content: space-between; padding: 0 20px; height: 68px; border-bottom: 1px solid var(--line); }
+  .drawer-head h2 { font-weight: normal; font-size: 20px; text-shadow: -1.5px 0 var(--red), 1.5px 0 var(--cyan); }
+  .drawer-body { padding: 20px; overflow-y: auto; }
+  .group { margin-bottom: 28px; }
+  .group h4 { font-weight: normal; font-size: 13px; color: var(--accent-2); margin-bottom: 12px; }
+  .row {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    padding: 12px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px;
+    margin-bottom: 8px; cursor: pointer; font-size: 15px;
+  }
+  .row small { display: block; color: var(--muted); font-size: 12px; margin-top: 3px; }
+  .switch { position: relative; width: 44px; height: 24px; flex: none; }
+  .switch input { position: absolute; opacity: 0; inset: 0; cursor: pointer; }
+  .switch i { position: absolute; inset: 0; border-radius: 99px; background: #262c42; transition: background .25s; }
+  .switch i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: transform .3s var(--ease); }
+  .switch input:checked + i { background: var(--accent); }
+  .switch input:checked + i::after { transform: translateX(20px); }
+  .switch input:focus-visible + i { box-shadow: 0 0 0 3px rgba(255,255,255,.35); }
+  .swatches { display: flex; gap: 10px; flex-wrap: wrap; }
+  .swatch {
+    width: 42px; height: 42px; border-radius: 10px; border: 2px solid transparent; cursor: pointer;
+    background: var(--c); transition: transform .2s var(--ease), border-color .2s;
+  }
+  .swatch:hover { transform: translateY(-2px); }
+  .swatch[aria-pressed="true"] { border-color: #fff; box-shadow: 0 0 16px var(--c); }
+  body.no-scan .crt-scan, body.no-scan .card .scan { display: none; }
+  body.no-noise .crt-noise { display: none; }
+  body.no-glitch .glitch::before, body.no-glitch .glitch::after { display: none; }
+  body.no-glitch .brand span, body.no-glitch .drawer-head h2 { text-shadow: none; }
+
+  @media (max-width: 640px) {
+    .osd .clock { display: none; }
+    .hero { padding-top: 48px; }
+    .hide-sm { display: none; }
+    .stage { padding: 0; }
+    .screen { border-radius: 0; border: 0; }
+    .search kbd { display: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+    .boot { display: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- Color-channel filters used for the RGB split hover effect -->
+<svg width="0" height="0" style="position:absolute">
+  <filter id="red"><feColorMatrix type="matrix" values="1 0 0 0 0  0 0 0 0 0  0 0 0 0 0  0 0 0 1 0"/></filter>
+  <filter id="cyan"><feColorMatrix type="matrix" values="0 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 1 0"/></filter>
+</svg>
+
+<div class="boot" aria-hidden="true">
+  <div class="boot-line"></div>
+  <div class="boot-text">▶ PLAY</div>
+</div>
+
+<div class="crt-noise"></div>
+<div class="crt-scan"></div>
+<div class="crt-vignette"></div>
+
+<header class="top">
+  <div class="wrap top-inner">
+    <a class="brand" href="#" aria-label="Home">
+      <img src="favicon.png" alt="">
+      <span>Boring game site</span>
+    </a>
+    <div class="osd">
+      <span class="rec"><i></i>PLAY</span>
+      <span class="clock" id="clock">SP 00:00:00</span>
+      <button class="btn gear" id="openSettings" aria-label="Settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+        <span class="hide-sm">Settings</span>
+      </button>
+    </div>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="hero">
+    <small>// CH-03 &nbsp;·&nbsp; TRACKING OK</small>
+    <h1 class="glitch" data-text="Boring game site">Boring game site</h1>
+    <p>Pick a tape, press play. Browser games, no downloads.</p>
+  </section>
+
+  <div class="controls">
+    <label class="search">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="q" type="search" placeholder="Search games..." autocomplete="off" aria-label="Search games">
+      <kbd>/</kbd>
+    </label>
+    <div class="count" id="count"></div>
+  </div>
+
+  <section class="grid" id="grid" aria-live="polite"></section>
+</main>
+
+<footer>
+  <div class="wrap">© <span id="yr"></span> Boring game site &nbsp;·&nbsp; All games belong to their original creators.</div>
+</footer>
+
+<div class="scrim" id="scrim"></div>
+<aside class="drawer" id="drawer" aria-label="Settings" aria-hidden="true">
+  <div class="drawer-head">
+    <h2>SETTINGS</h2>
+    <button class="btn" id="closeSettings" aria-label="Close settings">✕</button>
+  </div>
+  <div class="drawer-body">
+    <div class="group">
+      <h4>// DISPLAY</h4>
+      <label class="row"><div>Scanlines<small>CRT lines over the screen</small></div><span class="switch"><input type="checkbox" data-set="scan"><i></i></span></label>
+      <label class="row"><div>Static noise<small>Moving VHS grain</small></div><span class="switch"><input type="checkbox" data-set="noise"><i></i></span></label>
+      <label class="row"><div>Glitch text<small>Red/cyan title glitch</small></div><span class="switch"><input type="checkbox" data-set="glitch"><i></i></span></label>
+      <label class="row"><div>Power-on intro<small>TV flicker when the site loads</small></div><span class="switch"><input type="checkbox" data-set="boot"><i></i></span></label>
+    </div>
+    <div class="group">
+      <h4>// ACCENT COLOR</h4>
+      <div class="swatches" id="swatches"></div>
+    </div>
+    <div class="group">
+      <button class="btn" id="resetSettings">Reset to defaults</button>
+    </div>
+  </div>
+</aside>
+
+<div class="player" id="player" role="dialog" aria-modal="true" aria-label="Game player">
+  <div class="pbar">
+    <button class="btn" id="back" title="Back (Esc)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+      <span class="hide-sm">Back</span>
+    </button>
+    <div class="title"><small>● PLAY</small><span id="ptitle"></span></div>
+    <button class="btn" id="reload" title="Restart game">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/></svg>
+      <span class="hide-sm">Restart</span>
+    </button>
+    <button class="btn primary" id="fs" title="Fullscreen (F)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
+      <span>Fullscreen</span>
+    </button>
+  </div>
+  <div class="stage">
+    <div class="screen" id="screen">
+      <iframe id="frame" title="Game" allow="fullscreen; autoplay; gamepad; pointer-lock" allowfullscreen></iframe>
+      <div class="loading" id="loading"><div>LOADING TAPE...<div class="bar"><i></i></div></div></div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   GAME LIST — to add a game, copy one entry and change it.
+   path  = folder that contains the game's index.html
+   cover = image inside that folder
+   ============================================================ */
+const GAMES = [
+  {
+    id: "mcpe",
+    title: "Minecraft PE 0.6.1",
+    tag: "SANDBOX",
+    desc: "Classic Pocket Edition alpha.",
+    path: "Games/MCPE 0.6.1/",
+    cover: "cover.jpg"
+  },
+  {
+    id: "nocturnal-protocol",
+    title: "Nocturnal Protocol",
+    tag: "FNF",
+    desc: "Friday Night Funkin' mod.",
+    path: "Games/FNF/Nocturnal Protocall/",
+    cover: "cover.png"
+  },
+  {
+    id: "lions-mouth",
+    title: "The Lion's Mouth",
+    tag: "FNF",
+    desc: "Myths of Tubbyland — FNF mod.",
+    path: "Games/FNF/The Lions Mouth/",
+    cover: "cover.jpg"
+  },
+  {
+    id: "baldi-1-2-2",
+    title: "Baldi's Basics 1.2.2",
+    tag: "BALDI",
+    desc: "Baldi's Basics in Education and Learning.",
+    path: "Games/Baldis Basics/1.2.2/",
+    cover: "cover.png"
+  },
+  {
+    id: "baldi-1-4-5",
+    title: "Baldi's Basics Classic 1.4.5",
+    tag: "BALDI",
+    desc: "The classic schoolhouse escape.",
+    path: "Games/Baldis Basics/1.4.5/",
+    cover: "cover.png"
+  },
+  {
+    id: "baldi-camping",
+    title: "Baldi's Field Trip Demo",
+    tag: "BALDI",
+    desc: "Camping field trip demo 1.1.",
+    path: "Games/Baldis Basics/Camping Demo/",
+    cover: "cover.jpg"
+  },
+  {
+    id: "joseph-is-real",
+    title: "Joseph Is Real",
+    tag: "BALDI",
+    desc: "Baldi's Basics fan game.",
+    path: "Games/Baldis Basics/Joseph Is Real/",
+    cover: "cover.webp"
+  }
+];
+
+const enc = p => p.split("/").map(encodeURIComponent).join("/");
+const $ = s => document.querySelector(s);
+const grid = $("#grid"), q = $("#q"), count = $("#count");
+const player = $("#player"), frame = $("#frame"), screenEl = $("#screen"), loading = $("#loading");
+
+function render(list) {
+  grid.innerHTML = "";
+  if (!list.length) {
+    grid.innerHTML = '<div class="empty"><b>NO SIGNAL</b>No games match that search.</div>';
+  }
+  list.forEach((g, i) => {
+    const src = enc(g.path + g.cover);
+    const card = document.createElement("button");
+    card.className = "card";
+    card.style.animationDelay = (0.08 * i + (render.first ? 1.7 : 0)) + "s";
+    card.innerHTML = `
+      <div class="thumb" style="--img:url('${src}')">
+        <img src="${src}" alt="" loading="lazy">
+        <div class="scan"></div>
+        <span class="tag">${g.tag}</span>
+        <div class="play"><span>▶ PLAY</span></div>
+      </div>
+      <div class="meta"><h3>${g.title}</h3><p>${g.desc}</p></div>`;
+    card.addEventListener("click", () => location.hash = "play/" + g.id);
+    grid.appendChild(card);
+  });
+  count.innerHTML = `<b>${list.length}</b> / ${GAMES.length} games`;
+  render.first = false;
+}
+render.first = true;
+
+q.addEventListener("input", () => {
+  const t = q.value.trim().toLowerCase();
+  render(GAMES.filter(g => (g.title + " " + g.tag + " " + g.desc).toLowerCase().includes(t)));
+});
+
+/* ---------- Player ---------- */
+function openGame(g) {
+  $("#ptitle").textContent = g.title;
+  document.title = g.title + " · Boring game site";
+  loading.classList.remove("hide");
+  frame.src = enc(g.path) + "index.html";
+  player.classList.add("open");
+  document.body.style.overflow = "hidden";
+}
+function closeGame() {
+  if (document.fullscreenElement) document.exitFullscreen();
+  player.classList.remove("open");
+  document.body.style.overflow = "";
+  document.title = "Boring game site";
+  setTimeout(() => { if (!player.classList.contains("open")) frame.src = "about:blank"; }, 400);
+}
+frame.addEventListener("load", () => {
+  if (frame.src.endsWith("about:blank")) return;
+  setTimeout(() => loading.classList.add("hide"), 300);
+  frame.focus();
+});
+
+function route() {
+  const m = location.hash.match(/^#play\/(.+)$/);
+  const g = m && GAMES.find(x => x.id === m[1]);
+  g ? openGame(g) : (player.classList.contains("open") && closeGame());
+}
+window.addEventListener("hashchange", route);
+
+$("#back").onclick = () => { history.pushState("", document.title, location.pathname + location.search); route(); };
+$("#reload").onclick = () => { loading.classList.remove("hide"); frame.src = frame.src; };
+function toggleFs() {
+  if (document.fullscreenElement) document.exitFullscreen();
+  else (screenEl.requestFullscreen || screenEl.webkitRequestFullscreen).call(screenEl);
+  frame.focus();
+}
+$("#fs").onclick = toggleFs;
+
+document.addEventListener("keydown", e => {
+  if (e.key === "/" && document.activeElement !== q && !player.classList.contains("open")) {
+    e.preventDefault(); q.focus();
+  }
+  if (player.classList.contains("open")) {
+    if (e.key === "Escape" && !document.fullscreenElement) $("#back").click();
+    if (e.key.toLowerCase() === "f" && document.activeElement !== frame) toggleFs();
+  }
+});
+
+/* ---------- VHS clock ---------- */
+const t0 = Date.now(), clock = $("#clock");
+setInterval(() => {
+  const s = Math.floor((Date.now() - t0) / 1000);
+  const p = n => String(n).padStart(2, "0");
+  clock.textContent = `SP ${p(Math.floor(s / 3600))}:${p(Math.floor(s / 60) % 60)}:${p(s % 60)}`;
+}, 1000);
+$("#yr").textContent = new Date().getFullYear();
+
+/* ---------- Settings (saved in this browser) ---------- */
+const ACCENTS = { Blue: ["#2f8dff","#8fd0ff"], Pink: ["#ff3d9a","#ffa6d2"], Green: ["#2fd36b","#9cf5bd"], Amber: ["#ffb02e","#ffd98f"], Purple: ["#9b5cff","#cdb2ff"] };
+const DEFAULTS = { scan: true, noise: true, glitch: true, boot: true, accent: "Blue" };
+let settings = { ...DEFAULTS };
+try { Object.assign(settings, JSON.parse(localStorage.getItem("bgs-settings") || "{}")); } catch (e) {}
+function save() { try { localStorage.setItem("bgs-settings", JSON.stringify(settings)); } catch (e) {} }
+function applySettings() {
+  document.body.classList.toggle("no-scan", !settings.scan);
+  document.body.classList.toggle("no-noise", !settings.noise);
+  document.body.classList.toggle("no-glitch", !settings.glitch);
+  const [a, b] = ACCENTS[settings.accent] || ACCENTS.Blue;
+  document.documentElement.style.setProperty("--accent", a);
+  document.documentElement.style.setProperty("--accent-2", b);
+  document.querySelectorAll("[data-set]").forEach(el => el.checked = !!settings[el.dataset.set]);
+  document.querySelectorAll(".swatch").forEach(el => el.setAttribute("aria-pressed", el.dataset.name === settings.accent));
+}
+const sw = $("#swatches");
+Object.entries(ACCENTS).forEach(([name, [c]]) => {
+  const b = document.createElement("button");
+  b.className = "swatch"; b.dataset.name = name; b.title = name; b.setAttribute("aria-label", name);
+  b.style.setProperty("--c", c);
+  b.onclick = () => { settings.accent = name; save(); applySettings(); };
+  sw.appendChild(b);
+});
+document.querySelectorAll("[data-set]").forEach(el => el.addEventListener("change", () => { settings[el.dataset.set] = el.checked; save(); applySettings(); }));
+$("#resetSettings").onclick = () => { settings = { ...DEFAULTS }; save(); applySettings(); };
+if (!settings.boot) document.querySelector(".boot").remove(), render.first = false;
+applySettings();
+
+const drawer = $("#drawer"), scrim = $("#scrim");
+function setDrawer(open) {
+  drawer.classList.toggle("open", open); scrim.classList.toggle("open", open);
+  drawer.setAttribute("aria-hidden", !open);
+  if (open) $("#closeSettings").focus();
+}
+$("#openSettings").onclick = () => setDrawer(true);
+$("#closeSettings").onclick = scrim.onclick = () => setDrawer(false);
+document.addEventListener("keydown", e => { if (e.key === "Escape" && drawer.classList.contains("open")) setDrawer(false); });
+
+render(GAMES);
+route();
+</script>
+</body>
+</html>

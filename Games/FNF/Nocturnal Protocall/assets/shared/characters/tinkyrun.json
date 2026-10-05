@@ -1,0 +1,55 @@
+{
+	"animations": [
+		{
+			"offsets": [-5, 0],
+			"loop": true,
+			"fps": 38,
+			"anim": "idle",
+			"indices": [],
+			"name": "idle"
+		},
+		{
+			"offsets": [0, 0],
+			"loop": false,
+			"fps": 24,
+			"anim": "singLEFT",
+			"indices": [],
+			"name": "left"
+		},
+		{
+			"offsets": [0, 0],
+			"loop": false,
+			"fps": 24,
+			"anim": "singUP",
+			"indices": [],
+			"name": "up"
+		},
+		{
+			"offsets": [0, 0],
+			"loop": false,
+			"fps": 24,
+			"anim": "singDOWN",
+			"indices": [],
+			"name": "down"
+		},
+		{
+			"offsets": [0, 0],
+			"loop": false,
+			"fps": 24,
+			"anim": "singRIGHT",
+			"indices": [],
+			"name": "right"
+		}
+	],
+	"vocals_file": "",
+	"no_antialiasing": false,
+	"image": "characters/tinkyrun",
+	"position": [820, 40],
+	"healthicon": "tinky",
+	"flip_x": false,
+	"healthbar_colors": [98, 0, 183],
+	"camera_position": [-700, -270],
+	"sing_duration": 4,
+	"scale": 1.2,
+	"_editor_isPlayer": false
+}

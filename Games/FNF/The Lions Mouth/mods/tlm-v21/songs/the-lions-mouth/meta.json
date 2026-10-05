@@ -1,0 +1,19 @@
+{
+	"customValues": {},
+	"color": "#000000",
+	"opponentModeAllowed": true,
+	"icon": "face",
+	"difficulties": [
+		"hard",
+		"mechmode"
+	],
+	"coopAllowed": true,
+	"stepsPerBeat": 4,
+	"displayName": "The Lions Mouth",
+	"needsVoices": true,
+	"beatsPerMeasure": 4,
+	"variants": [
+		"the-lions-mouth-mech-mode"
+	],
+	"bpm": 160
+}

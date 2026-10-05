@@ -1,0 +1,31 @@
+{
+	"animations": [
+		{
+			"offsets": [-5, 0],
+			"loop": true,
+			"fps": 23,
+			"anim": "idle",
+			"indices": [],
+			"name": "idle"
+		},
+		{
+			"offsets": [0, 0],
+			"loop": false,
+			"fps": 20,
+			"anim": "turn",
+			"indices": [],
+			"name": "turn"
+		}
+	],
+	"vocals_file": "",
+	"no_antialiasing": false,
+	"image": "characters/tinkyturn",
+	"position": [-1040, -500],
+	"healthicon": "guardian",
+	"flip_x": true,
+	"healthbar_colors": [243, 243, 243],
+	"camera_position": [560, -70],
+	"sing_duration": 4,
+	"scale": 1.45,
+	"_editor_isPlayer": true
+}

@@ -1,0 +1,41 @@
+diff --git a/hscript/utils/UnsafeReflect.hx b/hscript/utils/UnsafeReflect.hx
+index 430763c..d8ba131 100644
+--- a/hscript/utils/UnsafeReflect.hx
++++ b/hscript/utils/UnsafeReflect.hx
+@@ -21,6 +21,8 @@ class UnsafeReflect {
+ 		untyped {
+ 			return o.__Field(field, untyped __cpp__("::hx::paccNever"));
+ 		}
++		#elseif js
++		return __jsBind(o, field, Reflect.field(o, field));
+ 		#else
+ 		return Reflect.field(o, field);
+ 		#end
+@@ -41,11 +43,27 @@ class UnsafeReflect {
+ 		untyped {
+ 			return o.__Field(field, untyped __cpp__("::hx::paccAlways"));
+ 		}
++		#elseif js
++		return __jsBind(o, field, Reflect.getProperty(o, field));
+ 		#else
+ 		return Reflect.getProperty(o, field);
+ 		#end
+ 	}
+ 
++	#if js
++	/**
++	 * On JS, reading a method off an object gives an unbound function, so calling it later
++	 * (e.g. a script calling `add(x)` on its state) runs with the wrong `this`.
++	 * Bind instance methods (not own-property closures) to their object, like hxcpp does.
++	 */
++	public static function __jsBind(o:Dynamic, field:String, v:Dynamic):Dynamic {
++		if (v != null && o != null && js.Syntax.typeof(v) == "function" && js.Syntax.typeof(o) == "object"
++			&& !js.Syntax.code("Object.prototype.hasOwnProperty.call({0}, {1})", o, field))
++			return untyped $bind(o, v);
++		return v;
++	}
++	#end
++
+ 	public #if !cpp inline #end static function setProperty(o:Dynamic, field:String, value:Dynamic):Void {
+ 		#if cpp
+ 		untyped {

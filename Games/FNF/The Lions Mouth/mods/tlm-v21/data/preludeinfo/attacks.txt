@@ -1,0 +1,5 @@
+Attacking
+Occasionally, Dipsy will attack you.
+To Take less damage, Press space when you see him swing.
+There will be an indicator on screen that will show you how well you did.
+Missing too many will kill you.

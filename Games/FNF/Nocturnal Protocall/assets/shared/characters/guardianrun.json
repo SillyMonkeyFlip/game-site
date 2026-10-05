@@ -1,0 +1,23 @@
+{
+	"animations": [
+		{
+			"loop": true,
+			"offsets": [-5, 0],
+			"anim": "idle",
+			"fps": 38,
+			"name": "idle",
+			"indices": []
+		}
+	],
+	"vocals_file": "",
+	"no_antialiasing": false,
+	"image": "characters/guardianrun",
+	"position": [-1010, -220],
+	"healthicon": "guardianglow",
+	"flip_x": true,
+	"healthbar_colors": [243, 243, 243],
+	"camera_position": [280, -70],
+	"sing_duration": 4,
+	"scale": 2.85,
+	"_editor_isPlayer": true
+}

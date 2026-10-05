@@ -1,0 +1,8 @@
+<!DOCTYPE codename-engine-character>
+<character x="-230" y="-350" sprite="dip-swing-v2" scale="0.7" color="#000000" holdTime="10">
+	<anim name="idle" anim="idle" fps="10" loop="true"/>
+	<anim name="singDOWN" anim="block" fps="30"/>
+	<anim name="singRIGHT" anim="block" fps="30"/>
+	<anim name="singLEFT" anim="block" fps="30"/>
+	<anim name="singUP" anim="block" fps="30"/>
+</character>

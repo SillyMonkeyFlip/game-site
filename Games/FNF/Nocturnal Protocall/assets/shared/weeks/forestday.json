@@ -1,0 +1,27 @@
+{
+	"storyName": "Your New Week",
+	"difficulties": "hard",
+	"hideFreeplay": false,
+	"weekBackground": "stage",
+	"weekBefore": "tutorial",
+	"startUnlocked": true,
+	"weekCharacters": [
+		"dad",
+		"bf",
+		"gf"
+	],
+	"hideStoryMode": true,
+	"songs": [
+		[
+			"Nocturnal Protocol",
+			"tinky",
+			[
+				146,
+				0,
+				253
+			]
+		]
+	],
+	"weekName": "Custom Week",
+	"hiddenUntilUnlocked": false
+}

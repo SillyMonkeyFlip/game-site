@@ -1,0 +1,23 @@
+{
+	"animations": [
+		{
+			"loop": true,
+			"offsets": [-5, 0],
+			"anim": "idle",
+			"fps": 23,
+			"name": "idle",
+			"indices": []
+		}
+	],
+	"vocals_file": "",
+	"no_antialiasing": false,
+	"image": "characters/guardianwalk",
+	"position": [-680, -140],
+	"healthicon": "guardian",
+	"flip_x": true,
+	"healthbar_colors": [243, 243, 243],
+	"camera_position": [-250, 350],
+	"sing_duration": 4,
+	"scale": 1,
+	"_editor_isPlayer": true
+}

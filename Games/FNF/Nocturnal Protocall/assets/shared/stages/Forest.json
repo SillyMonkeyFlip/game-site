@@ -1,0 +1,15 @@
+{
+	"directory": "slendy",
+	"defaultZoom": 0.47,
+	"stageUI": "",
+
+	"boyfriend": [1250, 1000],
+	"girlfriend": [350, 1000],
+	"opponent": [100, 1000],
+	"hide_girlfriend": true,
+
+	"camera_boyfriend": [-130, -330],
+	"camera_opponent": [270, -330],
+	"camera_girlfriend": [830, 330],
+	"camera_speed": 1.7
+}

@@ -1,0 +1,12 @@
+{
+"companyName": "mystman12",
+"productName": "Baldi's Basics in Education and Learning",
+"dataUrl": "Baldi-s-Basics-1.2.2-Decompile.data.unityweb",
+"wasmCodeUrl": "Baldi-s-Basics-1.2.2-Decompile.wasm.code.unityweb",
+"wasmFrameworkUrl": "Baldi-s-Basics-1.2.2-Decompile.wasm.framework.unityweb",
+"TOTAL_MEMORY": 16777216,
+"graphicsAPI": ["WebGL 2.0", "WebGL 1.0"],
+"webglContextAttributes": {"preserveDrawingBuffer": false},
+"splashScreenStyle": "Dark",
+"backgroundColor": "#000000"
+}

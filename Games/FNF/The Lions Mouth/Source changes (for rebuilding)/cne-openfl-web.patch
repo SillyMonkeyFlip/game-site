@@ -1,0 +1,34 @@
+diff --git a/src/openfl/utils/GLSLSourceAssembler.hx b/src/openfl/utils/GLSLSourceAssembler.hx
+index cf5e316..22d506e 100644
+--- a/src/openfl/utils/GLSLSourceAssembler.hx
++++ b/src/openfl/utils/GLSLSourceAssembler.hx
+@@ -488,7 +488,7 @@ class GLSLSourceAssembler
+ 
+ 	private function __buildExtensions(extensions:Map<String, String>, versionNumber:Int, versionProfile:Null<String>, isVertex:Bool):Map<String, String>
+ 	{
+-		if (versionNumber >= 300 && versionNumber < 400)
++		if (#if (js && html5) false && #end versionNumber >= 300 && versionNumber < 400)
+ 		{
+ 			// In 300, 310, 320, 330; it is required to include this extension.
+ 			if (!extensions.exists("GL_ARB_separate_shader_objects") && !extensions.exists("GL_EXT_separate_shader_objects"))
+@@ -645,17 +645,17 @@ class GLSLSourceAssembler
+ 
+ 	private static inline function __getPragmaFinder():EReg
+ 	{
+-		return ~/(?:^|\s)#pragma\s+(?|"([^"]+)"|'([^']+)'|([^\s]+))/g;
++		return ~/(?:^|\s)#pragma\s+["']?([^"'\s]+)["']?/g;
+ 	}
+ 
+ 	private static inline function __getIncludeFinder():EReg
+ 	{
+-		return ~/(?:^|\s)#include\s+(?|"([^"]+)"|'([^']+)'|([^\s]+))/g;
++		return ~/(?:^|\s)#include\s+["']?([^"'\s]+)["']?/g;
+ 	}
+ 
+ 	private static inline function __getIncludeCommentFinder():EReg
+ 	{
+-		return ~/(?:^|\s)\/\*#include\s+(?|"([^"]+)"|'([^']+)'|([^\s]+))\*\//g;
++		return ~/(?:^|\s)\/\*#include\s+["']?([^"'\s*]+)["']?\*\//g;
+ 	}
+ 
+ 	private static inline function __getVersionFinder():EReg

@@ -1,0 +1,4 @@
+Saw Notes
+Occasionally, Dipsy will attack you.
+To Take less damage, hit the saw notes that come down.
+Missing them will make you take more damage.

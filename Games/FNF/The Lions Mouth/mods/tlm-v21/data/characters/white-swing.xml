@@ -1,0 +1,12 @@
+<!DOCTYPE codename-engine-character>
+<character x="-600" y="-350" sprite="white-swing-v2" scale="0.7" flipX="true" isPlayer="true" color="#000000" holdTime="6">
+	<anim name="idle" anim="idle" fps="6"/>
+	<anim name="singDOWN" anim="block" x="-1.43" fps="30"/>
+	<anim name="singRIGHT" anim="block" fps="30"/>
+	<anim name="singLEFT" anim="block" fps="30"/>
+	<anim name="singUP" anim="block" fps="30"/>
+	<anim name="singUP-alt" anim="up" fps="10"/>
+	<anim name="singDOWN-alt" anim="down" fps="10"/>
+	<anim name="singLEFT-alt" anim="left" fps="10"/>
+	<anim name="singRIGHT-alt" anim="right" fps="10"/>
+</character>

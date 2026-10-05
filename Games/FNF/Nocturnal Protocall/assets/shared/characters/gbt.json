@@ -1,0 +1,31 @@
+{
+	"animations": [
+		{
+			"offsets": [-5, 0],
+			"loop": true,
+			"fps": 23,
+			"anim": "idle",
+			"indices": [],
+			"name": "idle"
+		},
+		{
+			"loop": false,
+			"offsets": [0, 0],
+			"anim": "anim",
+			"fps": 22,
+			"name": "anim",
+			"indices": []
+		}
+	],
+	"vocals_file": "",
+	"no_antialiasing": false,
+	"image": "characters/guardianbtinky",
+	"position": [-650, -220],
+	"healthicon": "guardian",
+	"flip_x": true,
+	"healthbar_colors": [243, 243, 243],
+	"camera_position": [620, -70],
+	"sing_duration": 4,
+	"scale": 2.85,
+	"_editor_isPlayer": true
+}

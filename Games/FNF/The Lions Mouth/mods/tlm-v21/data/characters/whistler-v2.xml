@@ -1,0 +1,8 @@
+<!DOCTYPE codename-engine-character>
+<character x="-200" y="-200" sprite="whitsler-v2" scale="0.7" flipX="true" isPlayer="true" icon="mraurafarmer" color="#FFFFFF">
+	<anim name="idle" anim="idle" x="0.71" fps="25"/>
+	<anim name="singDOWN" anim="down" x="-1.43" fps="20"/>
+	<anim name="singRIGHT" anim="right" fps="20"/>
+	<anim name="singLEFT" anim="left" x="-2.14" y="-0.71" fps="20"/>
+	<anim name="singUP" anim="up" fps="20"/>
+</character>

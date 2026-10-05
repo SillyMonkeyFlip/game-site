@@ -1,0 +1,1041 @@
+diff --git a/project.xml b/project.xml
+index d4ef4c6b..3ca8e5f3 100644
+--- a/project.xml
++++ b/project.xml
+@@ -67,7 +67,7 @@
+ 	<haxedef name="ALLOW_MULTITHREADING" if="cpp"/>
+ 
+ 	<!-- Comment this out to disable mods folder !-->
+-	<haxedef name="MOD_SUPPORT" unless="web"/>
++	<haxedef name="MOD_SUPPORT"/>
+ 
+ 	<!-- Comment this out to disable translations folders !-->
+ 	<haxedef name="TRANSLATIONS_SUPPORT"/>
+@@ -127,6 +127,8 @@
+ 	<window if="desktop" type="opengl" width="1280" height="720" fullscreen="false" resizable="true" vsync="false" allowHighDPI="true"/>
+ 	<window if="mobile" resizable="false"/>
+ 	<window if="html5 || switch" resizable="true"/>
++	<window if="html5" background="#000000"/>
++	<app title="Enter the Lions Mouth V2" if="html5"/>
+ 
+ 	<!-- _______________________________ Libraries ______________________________ -->
+ 
+@@ -178,18 +180,20 @@
+ 
+ 	<!-- ____________________________ Assets Settings ___________________________ -->
+ 
+-	<define name="PRELOAD_ALL" unless="web" />
++	<define name="PRELOAD_ALL" />
+ 	<define name="NO_PRELOAD_ALL" unless="PRELOAD_ALL"/>
+ 
+ 	<library name="assets"    preload="true"  if="PRELOAD_ALL"/>
+ 	<library name="assets"    preload="false" if="NO_PRELOAD_ALL" />
+ 
+ 	<section unless="TEST_BUILD">
+-		<assets path="assets/"    rename="assets"	exclude="*.ogg" if="web"/>
++		<!-- Web build: trimmed copy of assets/ plus the baked-in mod (see webbuild/) -->
++		<assets path="webbuild/assets/" rename="assets" exclude="*.ogg" if="web"/>
++		<assets path="webbuild/mods/" rename="mods" exclude="*.ogg" if="web"/>
+ 		<assets path="assets/"    rename="assets"	exclude="*.mp3" unless="web"/>
+ 
+ 		<!-- TODO: make it copy this manually, instead of using assets node, so it doesn't manually check for fonts -->
+-		<assets path='mods' rename='mods' embed='false' />
++		<assets path='mods' rename='mods' embed='false' unless="web"/>
+ 	</section>
+ 
+ 	<!-- <assets path='art/readme.txt' rename='do NOT readme.txt' /> -->
+diff --git a/source/funkin/backend/assets/AssetsLibraryList.hx b/source/funkin/backend/assets/AssetsLibraryList.hx
+index 6d2415fa..5367874f 100644
+--- a/source/funkin/backend/assets/AssetsLibraryList.hx
++++ b/source/funkin/backend/assets/AssetsLibraryList.hx
+@@ -221,7 +221,7 @@ class AssetsLibraryList extends AssetLibrary {
+ 		Logs.infos("Used cne test / cne build. Switching into source assets.");
+ 		switchToSourceAssets();
+ 		#elseif USE_ADAPTED_ASSETS
+-		if (sys.FileSystem.exists('./${Main.pathBack}assets/') && !sys.FileSystem.exists('./assets/')) {
++		if (#if sys sys.FileSystem #else funkin.backend.web.WebFileSystem #end.exists('./${Main.pathBack}assets/') && !#if sys sys.FileSystem #else funkin.backend.web.WebFileSystem #end.exists('./assets/')) {
+ 			Logs.infos("Source assets detected. Switching into source assets.");
+ 			switchToSourceAssets();
+ 		}
+@@ -229,6 +229,10 @@ class AssetsLibraryList extends AssetLibrary {
+ 
+ 		__defaultLibraries.push(ModsFolder.loadLibraryFromFolder('assets', rootDirectory, true, null, SOURCE));
+ 
++		#elseif MOD_SUPPORT
++		// Web: serve the base assets through the same folder library mods use (backed by the preloaded manifest),
++		// so folder listings (translations, characters, etc.) work like on desktop.
++		__defaultLibraries.push(ModsFolder.loadLibraryFromFolder('assets', './assets/', true, null, SOURCE));
+ 		#end
+ 
+ 		for (d in __defaultLibraries) addLibrary(d);
+diff --git a/source/funkin/backend/assets/ModsFolder.hx b/source/funkin/backend/assets/ModsFolder.hx
+index e4036075..a8590d67 100644
+--- a/source/funkin/backend/assets/ModsFolder.hx
++++ b/source/funkin/backend/assets/ModsFolder.hx
+@@ -12,7 +12,7 @@ import openfl.utils.AssetManifest;
+ 
+ using StringTools;
+ #if MOD_SUPPORT
+-import sys.FileSystem;
++#if sys import sys.FileSystem; #else import funkin.backend.web.WebFileSystem as FileSystem; #end
+ #end
+ 
+ 
+@@ -116,7 +116,7 @@ class ModsFolder {
+ 
+ 		var filePath = modsPath + mod + "/data/config/modpack.ini";
+ 		if (FileSystem.exists(filePath))
+-			return IniUtil.parseString(sys.io.File.getContent(filePath));
++			return IniUtil.parseString(#if sys sys.io.File #else funkin.backend.web.WebFile #end.getContent(filePath));
+ 
+ 		return [];
+ 	}
+diff --git a/source/funkin/backend/assets/ModsFolderLibrary.hx b/source/funkin/backend/assets/ModsFolderLibrary.hx
+index f7064cd9..f0adbcd2 100644
+--- a/source/funkin/backend/assets/ModsFolderLibrary.hx
++++ b/source/funkin/backend/assets/ModsFolderLibrary.hx
+@@ -7,8 +7,8 @@ import lime.text.Font;
+ import lime.utils.Bytes;
+ 
+ #if MOD_SUPPORT
+-import sys.FileStat;
+-import sys.FileSystem;
++#if sys import sys.FileStat; #else import funkin.backend.web.FileStat; #end
++#if sys import sys.FileSystem; #else import funkin.backend.web.WebFileSystem as FileSystem; #end
+ #end
+ 
+ using StringTools;
+@@ -45,7 +45,7 @@ class ModsFolderLibrary extends AssetLibrary implements IModsAssetLibrary {
+ 			return null;
+ 		var path = getAssetPath();
+ 		editedTimes[id] = FileSystem.stat(path).mtime.getTime();
+-		var e = AudioBuffer.fromFile(path);
++		var e = #if sys AudioBuffer.fromFile(path) #else funkin.backend.web.WebFS.raw.getAudioBuffer(funkin.backend.web.WebFS.clean(path)) #end;
+ 		// LimeAssets.cache.audio.set('$libName:$id', e);
+ 		return e;
+ 	}
+@@ -55,7 +55,7 @@ class ModsFolderLibrary extends AssetLibrary implements IModsAssetLibrary {
+ 			return null;
+ 		var path = getAssetPath();
+ 		editedTimes[id] = FileSystem.stat(path).mtime.getTime();
+-		var e = Bytes.fromFile(path);
++		var e = #if sys Bytes.fromFile(path) #else funkin.backend.web.WebFS.raw.getBytes(funkin.backend.web.WebFS.clean(path)) #end;
+ 		return e;
+ 	}
+ 
+@@ -64,7 +64,7 @@ class ModsFolderLibrary extends AssetLibrary implements IModsAssetLibrary {
+ 			return null;
+ 		var path = getAssetPath();
+ 		editedTimes[id] = FileSystem.stat(path).mtime.getTime();
+-		return ModsFolder.registerFont(Font.fromFile(path));
++		return ModsFolder.registerFont(#if sys Font.fromFile(path) #else funkin.backend.web.WebFS.raw.getFont(funkin.backend.web.WebFS.clean(path)) #end);
+ 	}
+ 
+ 	public override function getImage(id:String):Image {
+@@ -73,7 +73,7 @@ class ModsFolderLibrary extends AssetLibrary implements IModsAssetLibrary {
+ 		var path = getAssetPath();
+ 		editedTimes[id] = FileSystem.stat(path).mtime.getTime();
+ 
+-		var e = Image.fromFile(path);
++		var e = #if sys Image.fromFile(path) #else funkin.backend.web.WebFS.raw.getImage(funkin.backend.web.WebFS.clean(path)) #end;
+ 		return e;
+ 	}
+ 
+diff --git a/source/funkin/backend/assets/Paths.hx b/source/funkin/backend/assets/Paths.hx
+index 690d7d00..48bc7721 100644
+--- a/source/funkin/backend/assets/Paths.hx
++++ b/source/funkin/backend/assets/Paths.hx
+@@ -67,7 +67,7 @@ class Paths
+ 		}
+ 		else if (!nullFail) return fixedPath;
+ 		#else
+-		if (!nullFail || Assets.exists(fixedPath)) return fixedPath;
++		if (!nullFail || Assets.exists(fixedPath) #if !sys || funkin.backend.web.WebFS.isDir(fixedPath) #end) return fixedPath;
+ 		#end
+ 
+ 		return null;
+diff --git a/source/funkin/backend/assets/ScriptedAssetLibrary.hx b/source/funkin/backend/assets/ScriptedAssetLibrary.hx
+index e7ca6721..1d02276b 100644
+--- a/source/funkin/backend/assets/ScriptedAssetLibrary.hx
++++ b/source/funkin/backend/assets/ScriptedAssetLibrary.hx
+@@ -9,8 +9,8 @@ import lime.utils.Assets as LimeAssets;
+ import lime.utils.Bytes;
+ 
+ #if MOD_SUPPORT
+-import sys.FileStat;
+-import sys.FileSystem;
++#if sys import sys.FileStat; #else import funkin.backend.web.FileStat; #end
++#if sys import sys.FileSystem; #else import funkin.backend.web.WebFileSystem as FileSystem; #end
+ #end
+ 
+ using StringTools;
+diff --git a/source/funkin/backend/assets/ZipFolderLibrary.hx b/source/funkin/backend/assets/ZipFolderLibrary.hx
+index ad5225e0..4d7eeb78 100644
+--- a/source/funkin/backend/assets/ZipFolderLibrary.hx
++++ b/source/funkin/backend/assets/ZipFolderLibrary.hx
+@@ -8,7 +8,7 @@ import lime.media.AudioBuffer;
+ import lime.text.Font;
+ import lime.utils.Bytes;
+ import openfl.utils.AssetLibrary;
+-import sys.io.File;
++#if sys import sys.io.File; #else import funkin.backend.web.WebFile as File; #end
+ 
+ #if MOD_SUPPORT
+ import funkin.backend.utils.SysZip.SysZipEntry;
+diff --git a/source/funkin/backend/chart/Chart.hx b/source/funkin/backend/chart/Chart.hx
+index 1c700f43..6d79e543 100644
+--- a/source/funkin/backend/chart/Chart.hx
++++ b/source/funkin/backend/chart/Chart.hx
+@@ -7,7 +7,7 @@ import haxe.Json;
+ import haxe.io.Path;
+ 
+ #if sys
+-import sys.FileSystem;
++#if sys import sys.FileSystem; #else import funkin.backend.web.WebFileSystem as FileSystem; #end
+ #end
+ 
+ using StringTools;
+diff --git a/source/funkin/backend/shaders/FunkinShader.hx b/source/funkin/backend/shaders/FunkinShader.hx
+index 53616631..4ae65e72 100644
+--- a/source/funkin/backend/shaders/FunkinShader.hx
++++ b/source/funkin/backend/shaders/FunkinShader.hx
+@@ -66,7 +66,7 @@ class FunkinShader extends FlxRuntimeShader implements IHScriptCustomBehaviour {
+ 		final name = Type.getClassName(cls);
+ 		#end
+ 
+-		var paramType = __paramTypeCache.get(cls);
++		var paramType = __paramTypeCache.get(#if cpp cls #else name #end);
+ 		if (paramType == null) {
+ 			#if cpp
+ 			final name = Type.getClassName(cls);
+@@ -308,12 +308,12 @@ class FunkinShaderSourceAssembler extends FlxRuntimeShader.FlxShaderSourceAssemb
+ 
+ 	private static inline function __getImportFinder():EReg
+ 	{
+-		return ~/(?:^|\s)#import\s+(?|"([^"]+)"|'([^']+)'|([^\s]+))/g;
++		return ~/(?:^|\s)#import\s+["']?([^"'\s]+)["']?/g;
+ 	}
+ 
+ 	private static inline function __getIncludeCommentFinder():EReg
+ 	{
+-		return ~/(?:^|\s)\/\*#(import|include)\s+(?|"([^"]+)"|'([^']+)'|([^\s]+))\*\//g;
++		return ~/(?:^|\s)\/\*#(import|include)\s+["']?([^"'\s*]+)["']?\*\//g;
+ 	}
+ }
+ 
+diff --git a/source/funkin/backend/system/CommandLineHandler.hx b/source/funkin/backend/system/CommandLineHandler.hx
+index a0e83dc7..763af391 100644
+--- a/source/funkin/backend/system/CommandLineHandler.hx
++++ b/source/funkin/backend/system/CommandLineHandler.hx
+@@ -1,7 +1,7 @@
+ package funkin.backend.system;
+ 
+ #if sys
+-import sys.FileSystem;
++#if sys import sys.FileSystem; #else import funkin.backend.web.WebFileSystem as FileSystem; #end
+ final class CommandLineHandler {
+ 	public static function parseCommandLine(cmd:Array<String>) {
+ 		var i:Int = 0;
+diff --git a/source/funkin/backend/system/Main.hx b/source/funkin/backend/system/Main.hx
+index 4a52d5a2..89d1da6a 100644
+--- a/source/funkin/backend/system/Main.hx
++++ b/source/funkin/backend/system/Main.hx
+@@ -24,8 +24,8 @@ import openfl.Lib;
+ import openfl.display.Sprite;
+ import openfl.text.TextFormat;
+ import openfl.utils.AssetLibrary;
+-import sys.FileSystem;
+-import sys.io.File;
++#if sys import sys.FileSystem; #else import funkin.backend.web.WebFileSystem as FileSystem; #end
++#if sys import sys.io.File; #else import funkin.backend.web.WebFile as File; #end
+ #if android
+ import extension.androidtools.content.Context;
+ import extension.androidtools.os.Build;
+@@ -70,6 +70,7 @@ class Main extends Sprite
+ 	// You can pretty much ignore everything from here on - your code should go in your states.
+ 
+ 	public static function preInit() {
++		#if js funkin.backend.web.JsPolyfills.init(); #end
+ 		#if sys
+ 		funkin.backend.utils.NativeAPI.registerAsDPICompatible();
+ 		funkin.backend.system.CommandLineHandler.parseCommandLine(Sys.args());
+@@ -120,6 +121,7 @@ class Main extends Sprite
+ 	@:dox(hide) public static function execAsync(func:Void->Void) ThreadUtil.execAsync(func);
+ 
+ 	public static function loadGameSettings() {
++		#if !sys funkin.backend.web.WebFS.init(); #end
+ 		WindowUtils.init();
+ 		SaveWarning.init();
+ 		MemoryUtil.init();
+@@ -142,7 +144,16 @@ class Main extends Sprite
+ 		var lib = new AssetLibrary();
+ 		@:privateAccess
+ 		lib.__proxy = Paths.assetsTree;
++		#if js
++		// Web: lime's registerLibrary would unload (and wipe) the preloaded library we just wrapped,
++		// and in a browser there's no disk to reload it from. Swap it in without unloading.
++		@:privateAccess {
++			lime.utils.Assets.libraries.set('default', lib);
++			lib.onChange.add(lime.utils.Assets.library_onChange);
++		}
++		#else
+ 		Assets.registerLibrary('default', lib);
++		#end
+ 
+ 		funkin.options.PlayerSettings.init();
+ 		Options.load();
+@@ -276,7 +287,7 @@ class Main extends Sprite
+ 	public static var noCwdFix:Bool = false;
+ 	public static function fixWorkingDirectory() {
+ 		#if windows
+-		if (!noCwdFix && !sys.FileSystem.exists('manifest/default.json')) {
++		if (!noCwdFix && !#if sys sys.FileSystem #else funkin.backend.web.WebFileSystem #end.exists('manifest/default.json')) {
+ 			Sys.setCwd(haxe.io.Path.directory(Sys.programPath()));
+ 		}
+ 		#elseif android
+diff --git a/source/funkin/backend/system/MainState.hx b/source/funkin/backend/system/MainState.hx
+index a2cda05c..f410e86f 100644
+--- a/source/funkin/backend/system/MainState.hx
++++ b/source/funkin/backend/system/MainState.hx
+@@ -2,7 +2,7 @@ package funkin.backend.system;
+ 
+ import funkin.backend.system.console.ConsoleCommandManager;
+ #if MOD_SUPPORT
+-import sys.FileSystem;
++#if sys import sys.FileSystem; #else import funkin.backend.web.WebFileSystem as FileSystem; #end
+ #end
+ import flixel.FlxState;
+ import funkin.backend.assets.AssetsLibraryList;
+diff --git a/source/funkin/backend/system/console/ConsoleUI.hx b/source/funkin/backend/system/console/ConsoleUI.hx
+index 6b424150..844d1ea3 100644
+--- a/source/funkin/backend/system/console/ConsoleUI.hx
++++ b/source/funkin/backend/system/console/ConsoleUI.hx
+@@ -1,4 +1,5 @@
+ package funkin.backend.system.console;
++#if IMGUI_ENABLED
+ 
+ #if IMGUI_ENABLED
+ import lime.tools.imgui.ImGui;
+@@ -818,4 +819,28 @@ class ConsoleUI {
+ 			Logs.infos(Std.string(consoleHscript.tryExecute(str)), LIGHTGRAY, "Console");
+ 		}
+ 	}
+-}
+\ No newline at end of file
++}
++#else
++/** Web build: the ImGui console isn't available, so this is a no-op stand-in. */
++class ConsoleUI {
++	public static var instance(default, null):ConsoleUI;
++	public var uiVisible(get, never):Bool;
++	function get_uiVisible() return false;
++	public var active:Bool = false;
++	@:allow(funkin) private var consoleHscript:WebConsoleHscript = new WebConsoleHscript();
++	public static function init() { if (instance == null) instance = new ConsoleUI(); }
++	public function new() {}
++	public function toggleUI() {}
++	public function toggleInspector() {}
++	public function displayUI() {}
++	public function addToConsole(text:Dynamic) {}
++	public function clearConsole() {}
++}
++
++class WebConsoleHscript {
++	public var variableFields:Array<String> = [];
++	public function new() {}
++	public function tryGetFields(s:String):Array<Dynamic> return [];
++	public function tryExecute(s:String):Dynamic return null;
++}
++#end
+diff --git a/source/funkin/backend/system/macros/Macros.hx b/source/funkin/backend/system/macros/Macros.hx
+index 16f3f0d5..358011a8 100644
+--- a/source/funkin/backend/system/macros/Macros.hx
++++ b/source/funkin/backend/system/macros/Macros.hx
+@@ -68,7 +68,10 @@ class Macros {
+ 			}
+ 		}
+ 
+-		Compiler.include("funkin", [#if !UPDATE_CHECKING 'funkin.backend.system.updating' #end]);
++		var funkinExcludes:Array<String> = [#if !UPDATE_CHECKING 'funkin.backend.system.updating' #end];
++		if (Context.defined("js")) // web build: desktop-only packages
++			funkinExcludes = funkinExcludes.concat(['funkin.backend.system.console.inspector', 'funkin.backend.system.net', 'funkin.backend.system.updating']);
++		Compiler.include("funkin", funkinExcludes);
+ 	}
+ 
+ 	public static function initMacros() {
+diff --git a/source/funkin/backend/system/updating/AsyncUpdater.hx b/source/funkin/backend/system/updating/AsyncUpdater.hx
+index 8ddc3423..d4865e71 100644
+--- a/source/funkin/backend/system/updating/AsyncUpdater.hx
++++ b/source/funkin/backend/system/updating/AsyncUpdater.hx
+@@ -9,8 +9,8 @@ import openfl.events.ProgressEvent;
+ import openfl.net.URLLoader;
+ import openfl.net.URLRequest;
+ import openfl.utils.ByteArray;
+-import sys.FileSystem;
+-import sys.io.File;
++#if sys import sys.FileSystem; #else import funkin.backend.web.WebFileSystem as FileSystem; #end
++#if sys import sys.io.File; #else import funkin.backend.web.WebFile as File; #end
+ import sys.io.FileOutput;
+ 
+ class AsyncUpdater {
+diff --git a/source/funkin/backend/system/updating/UpdateUtil.hx b/source/funkin/backend/system/updating/UpdateUtil.hx
+index fcaaf914..e120b74a 100644
+--- a/source/funkin/backend/system/updating/UpdateUtil.hx
++++ b/source/funkin/backend/system/updating/UpdateUtil.hx
+@@ -8,13 +8,13 @@ import funkin.backend.utils.ThreadUtil;
+ 
+ import lime.app.Application;
+ 
+-import sys.FileSystem;
++#if sys import sys.FileSystem; #else import funkin.backend.web.WebFileSystem as FileSystem; #end
+ 
+ import haxe.io.Path;
+ 
+ #if (target.threaded)
+-import sys.thread.Thread;
+-import sys.thread.Mutex;
++#if sys import sys.thread.Thread; #else import funkin.backend.web.Thread; #end
++#if sys import sys.thread.Mutex; #else import funkin.backend.web.Mutex; #end
+ #end
+ 
+ using funkin.backend.system.github.GitHub;
+diff --git a/source/funkin/backend/utils/AudioAnalyzer.hx b/source/funkin/backend/utils/AudioAnalyzer.hx
+index 670c5b8f..7fc40f8c 100644
+--- a/source/funkin/backend/utils/AudioAnalyzer.hx
++++ b/source/funkin/backend/utils/AudioAnalyzer.hx
+@@ -1,7 +1,7 @@
+ package funkin.backend.utils;
+ 
+ #if lime_openal
+-import sys.thread.Mutex;
++#if sys import sys.thread.Mutex; #else import funkin.backend.web.Mutex; #end
+ 
+ import lime.utils.ArrayBufferView.ArrayBufferIO;
+ import lime.utils.ArrayBuffer;
+@@ -624,4 +624,16 @@ final class AudioAnalyzer {
+ 
+ 	static inline function idiv(num:Int, denom:Int):Int return #if (cpp && !cppia) cpp.NativeMath.idiv(num, denom) #else Std.int(num / denom) #end;
+ }
+-#end
+\ No newline at end of file
++#else
++/** Web build: no OpenAL sample access, so analysis returns silence. */
++class AudioAnalyzer {
++	public var sound:flixel.sound.FlxSound;
++	public function new(sound:flixel.sound.FlxSound, fftN = 4096) { this.sound = sound; }
++	public function analyze(startPos:Float, endPos:Float, ?timeUnit:Dynamic, ?outOrOutMins:Array<Float>, ?outMaxs:Array<Float>):Float return 0;
++	public function getLevels(?startPos:Float, ?volume:Float, barCount:Int, ?levels:Array<Float>, ?ratio:Float, ?minDb:Float, ?maxDb:Float, ?minFreq:Float, ?maxFreq:Float):Array<Float> {
++		if (levels == null) levels = [];
++		for (i in 0...barCount) levels[i] = 0;
++		return levels;
++	}
++}
++#end
+diff --git a/source/funkin/backend/utils/CoolUtil.hx b/source/funkin/backend/utils/CoolUtil.hx
+index ca170ca3..1ccec727 100644
+--- a/source/funkin/backend/utils/CoolUtil.hx
++++ b/source/funkin/backend/utils/CoolUtil.hx
+@@ -4,7 +4,7 @@ package funkin.backend.utils;
+ import cpp.Float64;
+ #end
+ #if sys
+-import sys.FileSystem;
++#if sys import sys.FileSystem; #else import funkin.backend.web.WebFileSystem as FileSystem; #end
+ #end
+ import flixel.animation.FlxAnimation;
+ import flixel.graphics.FlxGraphic;
+@@ -141,8 +141,8 @@ final class CoolUtil
+ 		#if sys
+ 		try {
+ 			addMissingFolders(Path.directory(path));
+-			if(content is Bytes) sys.io.File.saveBytes(path, content);
+-			else sys.io.File.saveContent(path, content);
++			if(content is Bytes) #if sys sys.io.File #else funkin.backend.web.WebFile #end.saveBytes(path, content);
++			else #if sys sys.io.File #else funkin.backend.web.WebFile #end.saveContent(path, content);
+ 		} catch(e) {
+ 			var errMsg:String = 'Error while trying to save the file: ${Std.string(e).replace('\n', ' ')}';
+ 			Logs.error(errMsg);
+diff --git a/source/funkin/backend/utils/DiscordUtil.hx b/source/funkin/backend/utils/DiscordUtil.hx
+index 84791be2..32f62aad 100644
+--- a/source/funkin/backend/utils/DiscordUtil.hx
++++ b/source/funkin/backend/utils/DiscordUtil.hx
+@@ -14,7 +14,7 @@ import Sys;
+ import hxdiscord_rpc.Discord;
+ import hxdiscord_rpc.Types;
+ import lime.app.Application;
+-import sys.thread.Thread;
++#if sys import sys.thread.Thread; #else import funkin.backend.web.Thread; #end
+ #end
+ 
+ final class DiscordUtil
+diff --git a/source/funkin/backend/utils/NativeAPI.hx b/source/funkin/backend/utils/NativeAPI.hx
+index 16e08c19..2c65267d 100644
+--- a/source/funkin/backend/utils/NativeAPI.hx
++++ b/source/funkin/backend/utils/NativeAPI.hx
+@@ -34,7 +34,7 @@ class NativeAPI {
+ 	 */
+ 	public static function getFileAttributesRaw(path:String, useAbsolute:Bool = true):Int {
+ 		#if windows
+-		if(useAbsolute) path = sys.FileSystem.absolutePath(path);
++		if(useAbsolute) path = #if sys sys.FileSystem #else funkin.backend.web.WebFileSystem #end.absolutePath(path);
+ 		return Windows.getFileAttributes(path);
+ 		#else
+ 		return -1;
+@@ -53,7 +53,7 @@ class NativeAPI {
+ 	 */
+ 	public static function setFileAttributes(path:String, attrib:OneOfThree<NativeAPI.FileAttribute, FileAttributeWrapper, Int>, useAbsolute:Bool = true):Int {
+ 		#if windows
+-		if(useAbsolute) path = sys.FileSystem.absolutePath(path);
++		if(useAbsolute) path = #if sys sys.FileSystem #else funkin.backend.web.WebFileSystem #end.absolutePath(path);
+ 		return Windows.setFileAttributes(path, attrib is FileAttributeWrapper ? cast(attrib, FileAttributeWrapper).getValue() : cast(attrib, Int));
+ 		#else
+ 		return 0;
+diff --git a/source/funkin/backend/utils/SysZip.hx b/source/funkin/backend/utils/SysZip.hx
+index 126bb15d..224eddfc 100644
+--- a/source/funkin/backend/utils/SysZip.hx
++++ b/source/funkin/backend/utils/SysZip.hx
+@@ -3,7 +3,7 @@ package funkin.backend.utils;
+ #if sys
+ import haxe.io.Input;
+ import haxe.zip.Reader;
+-import sys.io.File;
++#if sys import sys.io.File; #else import funkin.backend.web.WebFile as File; #end
+ import sys.io.FileInput;
+ 
+ import haxe.io.Bytes;
+@@ -69,7 +69,7 @@ class SysZip {
+ 		}
+ 		
+ 		// --- locate End of Central Directory (EOCD) ---
+-		var fileSize:Int = sys.FileSystem.stat(this.filePath).size; // probably need a better way to check the size of the file.
++		var fileSize:Int = #if sys sys.FileSystem #else funkin.backend.web.WebFileSystem #end.stat(this.filePath).size; // probably need a better way to check the size of the file.
+ 		var scanSize:Int = (65535 < fileSize) ? 65535 : fileSize;
+ 		
+ 		// It seems this usually ends up being 0 anyways, but for cases where it might not be?? I'd just make sure. but Someone do some digging I don't know if this required.
+@@ -141,4 +141,22 @@ typedef SysZipEntry = {
+ 	var compressedSize:Int;
+ 	var compressed:Bool;
+ }
+-#end
+\ No newline at end of file
++#else
++/** Web build: zipped mods aren't supported, so this opens as an empty archive. */
++class SysZip {
++	public var entries:List<SysZipEntry> = new List();
++	public static function openFromFile(path:String) { return new SysZip(path); }
++	public function new(path:String) {}
++	public function unzipEntry(f:SysZipEntry):haxe.io.Bytes return null;
++	public function read(?f:Dynamic):Dynamic return null;
++	public function dispose() {}
++}
++
++typedef SysZipEntry = {
++	var fileName:String;
++	var fileSize:Int;
++	var seekPos:Int;
++	var compressedSize:Int;
++	var compressed:Bool;
++}
++#end
+diff --git a/source/funkin/backend/utils/ThreadUtil.hx b/source/funkin/backend/utils/ThreadUtil.hx
+index 9b906ad7..54e1a9c1 100644
+--- a/source/funkin/backend/utils/ThreadUtil.hx
++++ b/source/funkin/backend/utils/ThreadUtil.hx
+@@ -4,14 +4,16 @@ package funkin.backend.utils;
+ import sys.thread.Deque;
+ import sys.thread.Thread;
+ import sys.thread.Mutex;
+-#else
+-private typedef Thread = Dynamic;
+ #end
+ 
+ #if !macro
+ import funkin.backend.system.Logs;
+ #end
+ 
++#if !(target.threaded)
++private typedef Thread = Dynamic;
++#end
++
+ final class ThreadUtil {
+ 	inline static function error(text:String) {
+ 		#if macro
+diff --git a/source/funkin/backend/utils/ZipUtil.hx b/source/funkin/backend/utils/ZipUtil.hx
+index 0e87fd55..9da34eac 100644
+--- a/source/funkin/backend/utils/ZipUtil.hx
++++ b/source/funkin/backend/utils/ZipUtil.hx
+@@ -15,9 +15,9 @@ import haxe.zip.Compress;
+ import haxe.zip.Tools;
+ import haxe.zip.Uncompress;
+ import haxe.zip.Writer;
+-import sys.FileSystem;
+-import sys.io.File;
+-import sys.thread.Thread;
++#if sys import sys.FileSystem; #else import funkin.backend.web.WebFileSystem as FileSystem; #end
++#if sys import sys.io.File; #else import funkin.backend.web.WebFile as File; #end
++#if sys import sys.thread.Thread; #else import funkin.backend.web.Thread; #end
+ 
+ using StringTools;
+ 
+@@ -252,6 +252,12 @@ class StrNameLabel {
+ 		this.label = label;
+ 	}
+ }
++#else
++/** Web build: zip tools are desktop-only. */
++final class ZipUtil {
++	public static function unzip(f:Entry):haxe.io.Bytes return f != null ? f.data : null;
++	public static function openZip(zipPath:String):Reader return null;
++}
+ #end
+ 
+ class ZipReader extends Reader {
+diff --git a/source/funkin/backend/web/Deque.hx b/source/funkin/backend/web/Deque.hx
+new file mode 100644
+index 00000000..004bc9af
+--- /dev/null
++++ b/source/funkin/backend/web/Deque.hx
+@@ -0,0 +1,10 @@
++package funkin.backend.web;
++
++/** Web shim for sys.thread.Deque (single-threaded). */
++class Deque<T> {
++	var items:Array<T> = [];
++	public function new() {}
++	public function add(i:T):Void items.push(i);
++	public function push(i:T):Void items.unshift(i);
++	public function pop(block:Bool):Null<T> return items.shift();
++}
+diff --git a/source/funkin/backend/web/FileStat.hx b/source/funkin/backend/web/FileStat.hx
+new file mode 100644
+index 00000000..48a39ddd
+--- /dev/null
++++ b/source/funkin/backend/web/FileStat.hx
+@@ -0,0 +1,6 @@
++package funkin.backend.web;
++
++typedef FileStat = {
++	var gid:Int; var uid:Int; var atime:Date; var mtime:Date; var ctime:Date;
++	var size:Int; var dev:Int; var ino:Int; var nlink:Int; var rdev:Int; var mode:Int;
++}
+diff --git a/source/funkin/backend/web/FixedThreadPool.hx b/source/funkin/backend/web/FixedThreadPool.hx
+new file mode 100644
+index 00000000..0839aed6
+--- /dev/null
++++ b/source/funkin/backend/web/FixedThreadPool.hx
+@@ -0,0 +1,9 @@
++package funkin.backend.web;
++
++/** Web shim: runs jobs immediately on the main thread. */
++class FixedThreadPool {
++	public var threadsCount(default, null):Int;
++	public function new(threadsCount:Int) { this.threadsCount = threadsCount; }
++	public function run(job:() -> Void):Void { job(); }
++	public function shutdown():Void {}
++}
+diff --git a/source/funkin/backend/web/JsPolyfills.hx b/source/funkin/backend/web/JsPolyfills.hx
+new file mode 100644
+index 00000000..c31ebfa2
+--- /dev/null
++++ b/source/funkin/backend/web/JsPolyfills.hx
+@@ -0,0 +1,27 @@
++package funkin.backend.web;
++
++/**
++ * On JS, a few Haxe Array methods are compiled to static helpers instead of real methods,
++ * so a script calling `array.remove(x)` through reflection finds nothing. Add them to the prototype.
++ */
++class JsPolyfills {
++	static var done = false;
++	public static function init() {
++		if (done) return;
++		done = true;
++		// keep these classes alive for the polyfills below
++		var _a:Dynamic = haxe.iterators.ArrayIterator; var _b:Dynamic = haxe.iterators.ArrayKeyValueIterator;
++		js.Syntax.code("
++		(function(P){
++			function def(n, f){ if (!Object.prototype.hasOwnProperty.call(P, n)) Object.defineProperty(P, n, {value: f, writable: true, configurable: true, enumerable: false}); }
++			def('remove', function(x){ var i = this.indexOf(x); if (i == -1) return false; this.splice(i, 1); return true; });
++			def('contains', function(x){ return this.indexOf(x) != -1; });
++			def('insert', function(pos, x){ this.splice(pos, 0, x); });
++			def('copy', function(){ return this.slice(); });
++			def('resize', function(len){ if (this.length > len) this.length = len; else { this.length = len; } });
++			def('iterator', function(){ return new haxe_iterators_ArrayIterator(this); });
++			def('keyValueIterator', function(){ return new haxe_iterators_ArrayKeyValueIterator(this); });
++		})(Array.prototype);
++		");
++	}
++}
+diff --git a/source/funkin/backend/web/Lock.hx b/source/funkin/backend/web/Lock.hx
+new file mode 100644
+index 00000000..73432197
+--- /dev/null
++++ b/source/funkin/backend/web/Lock.hx
+@@ -0,0 +1,7 @@
++package funkin.backend.web;
++
++class Lock {
++	public function new() {}
++	public function wait(?timeout:Float):Bool return true;
++	public function release():Void {}
++}
+diff --git a/source/funkin/backend/web/Mutex.hx b/source/funkin/backend/web/Mutex.hx
+new file mode 100644
+index 00000000..0eeafe97
+--- /dev/null
++++ b/source/funkin/backend/web/Mutex.hx
+@@ -0,0 +1,9 @@
++package funkin.backend.web;
++
++/** Web shim: single-threaded, so locking is a no-op. */
++class Mutex {
++	public function new() {}
++	public function acquire():Void {}
++	public function tryAcquire():Bool return true;
++	public function release():Void {}
++}
+diff --git a/source/funkin/backend/web/Thread.hx b/source/funkin/backend/web/Thread.hx
+new file mode 100644
+index 00000000..372e4dd8
+--- /dev/null
++++ b/source/funkin/backend/web/Thread.hx
+@@ -0,0 +1,8 @@
++package funkin.backend.web;
++
++/** Web shim: "threads" run immediately. */
++class Thread {
++	function new() {}
++	public static function create(job:() -> Void):Thread { job(); return new Thread(); }
++	public static function current():Thread return new Thread();
++}
+diff --git a/source/funkin/backend/web/WebFS.hx b/source/funkin/backend/web/WebFS.hx
+new file mode 100644
+index 00000000..60756bd4
+--- /dev/null
++++ b/source/funkin/backend/web/WebFS.hx
+@@ -0,0 +1,61 @@
++package funkin.backend.web;
++
++import lime.utils.AssetLibrary;
++
++/**
++ * Web build: a read-only "file system" made from the game's preloaded asset manifest.
++ * Captured before Codename swaps in its own asset library tree, so lookups never recurse.
++ */
++class WebFS {
++	public static var raw(get, never):AssetLibrary;
++	static var _raw:AssetLibrary;
++	public static var files:Map<String, Bool>;
++	public static var dirs:Map<String, Array<String>>;
++
++	// The real (preloaded) library. Before Codename wraps it, it's "default";
++	// afterwards Codename keeps it as Paths.assetsTree.base.
++	static function get_raw():AssetLibrary {
++		var tree = funkin.backend.assets.Paths.assetsTree;
++		if (tree != null && tree.base != null) return tree.base;
++		return lime.utils.Assets.getLibrary("default");
++	}
++
++	public static function init() {
++		var r = raw;
++		if (r == _raw && files != null) return;
++		_raw = r;
++		files = [];
++		dirs = [];
++		if (r == null) return;
++		for (id in r.list(null)) {
++			files.set(id, true);
++			var parts = id.split("/");
++			var dir = "";
++			for (i in 0...parts.length) {
++				var list = dirs.get(dir);
++				if (list == null) dirs.set(dir, list = []);
++				if (!list.contains(parts[i])) list.push(parts[i]);
++				dir = dir == "" ? parts[i] : dir + "/" + parts[i];
++			}
++		}
++	}
++
++	public static function clean(path:String):String {
++		if (path == null) return "";
++		path = StringTools.replace(path, "\\", "/");
++		while (StringTools.startsWith(path, "./")) path = path.substr(2);
++		while (path.indexOf("//") >= 0) path = StringTools.replace(path, "//", "/");
++		while (StringTools.endsWith(path, "/")) path = path.substr(0, path.length - 1);
++		// resolve "a/b/../c"
++		var out:Array<String> = [];
++		for (p in path.split("/")) {
++			if (p == "..") { if (out.length > 0) out.pop(); }
++			else if (p != ".") out.push(p);
++		}
++		return out.join("/");
++	}
++
++	public static inline function isFile(path:String):Bool { init(); return files.exists(clean(path)); }
++	public static inline function isDir(path:String):Bool { init(); return dirs.exists(clean(path)); }
++	public static function list(path:String):Array<String> { init(); var l = dirs.get(clean(path)); return l == null ? [] : l.copy(); }
++}
+diff --git a/source/funkin/backend/web/WebFile.hx b/source/funkin/backend/web/WebFile.hx
+new file mode 100644
+index 00000000..1b6f8936
+--- /dev/null
++++ b/source/funkin/backend/web/WebFile.hx
+@@ -0,0 +1,21 @@
++package funkin.backend.web;
++
++/** Web stand-in for sys.io.File, backed by the preloaded asset manifest. */
++class WebFile {
++	public static function getContent(path:String):String {
++		if (!WebFS.isFile(path)) return null;
++		var id = WebFS.clean(path);
++		var t = WebFS.raw.getText(id);
++		return t;
++	}
++	public static function getBytes(path:String):haxe.io.Bytes {
++		if (!WebFS.isFile(path)) return null;
++		return WebFS.raw.getBytes(WebFS.clean(path));
++	}
++	public static function saveContent(path:String, content:String):Void {}
++	public static function saveBytes(path:String, bytes:haxe.io.Bytes):Void {}
++	public static function copy(src:String, dst:String):Void {}
++	public static function append(path:String, ?binary:Bool):Dynamic return null;
++	public static function write(path:String, ?binary:Bool):Dynamic return null;
++	public static function read(path:String, ?binary:Bool):Dynamic return null;
++}
+diff --git a/source/funkin/backend/web/WebFileSystem.hx b/source/funkin/backend/web/WebFileSystem.hx
+new file mode 100644
+index 00000000..6d76175b
+--- /dev/null
++++ b/source/funkin/backend/web/WebFileSystem.hx
+@@ -0,0 +1,18 @@
++package funkin.backend.web;
++
++/** Web stand-in for sys.FileSystem, backed by the preloaded asset manifest. */
++class WebFileSystem {
++	public static function exists(path:String):Bool return WebFS.isFile(path) || WebFS.isDir(path);
++	public static function isDirectory(path:String):Bool return WebFS.isDir(path);
++	public static function readDirectory(path:String):Array<String> return WebFS.list(path);
++	public static function fullPath(path:String):String return path;
++	public static function absolutePath(path:String):String return path;
++	public static function stat(path:String):FileStat {
++		var d = Date.fromTime(0);
++		return {gid:0, uid:0, atime:d, mtime:d, ctime:d, size:0, dev:0, ino:0, nlink:0, rdev:0, mode:0};
++	}
++	public static function createDirectory(path:String):Void {}
++	public static function deleteFile(path:String):Void {}
++	public static function deleteDirectory(path:String):Void {}
++	public static function rename(path:String, newPath:String):Void {}
++}
+diff --git a/source/funkin/backend/web/WebSys.hx b/source/funkin/backend/web/WebSys.hx
+new file mode 100644
+index 00000000..209cd8b8
+--- /dev/null
++++ b/source/funkin/backend/web/WebSys.hx
+@@ -0,0 +1,21 @@
++package funkin.backend.web;
++
++/** Web stand-in for the parts of Sys the engine touches. */
++class WebSys {
++	public static function getCwd():String return "./";
++	public static function time():Float return haxe.Timer.stamp();
++	public static function cpuTime():Float return haxe.Timer.stamp();
++	public static function command(cmd:String, ?args:Array<String>):Int return 0;
++	public static function exit(code:Int):Void {}
++	public static function println(v:Dynamic):Void trace(v);
++	public static function print(v:Dynamic):Void trace(v);
++	public static function getEnv(s:String):String return null;
++	public static function putEnv(s:String, v:Null<String>):Void {}
++	public static function environment():Map<String, String> return [];
++	public static function systemName():String return "Web";
++	public static function sleep(seconds:Float):Void {}
++	public static function programPath():String return "./";
++	public static function executablePath():String return "./";
++	public static function args():Array<String> return [];
++	public static function setCwd(s:String):Void {}
++}
+diff --git a/source/funkin/editors/character/CharacterEditor.hx b/source/funkin/editors/character/CharacterEditor.hx
+index bbca07b5..08eaa021 100644
+--- a/source/funkin/editors/character/CharacterEditor.hx
++++ b/source/funkin/editors/character/CharacterEditor.hx
+@@ -17,8 +17,8 @@ import funkin.game.Character;
+ import haxe.xml.Access;
+ import haxe.xml.Printer;
+ import funkin.editors.ui.UIImageExplorer.ImageSaveData;
+-import sys.FileSystem;
+-import sys.io.File;
++#if sys import sys.FileSystem; #else import funkin.backend.web.WebFileSystem as FileSystem; #end
++#if sys import sys.io.File; #else import funkin.backend.web.WebFile as File; #end
+ 
+ class CharacterEditor extends UIState {
+ 	static var __character:String;
+diff --git a/source/funkin/editors/charter/Charter.hx b/source/funkin/editors/charter/Charter.hx
+index b51d3882..64b4fec6 100644
+--- a/source/funkin/editors/charter/Charter.hx
++++ b/source/funkin/editors/charter/Charter.hx
+@@ -22,7 +22,7 @@ import funkin.editors.ui.UIState;
+ import funkin.editors.ui.UITopMenu.UITopMenuButton;
+ import haxe.Json;
+ #if sys
+-import sys.FileSystem;
++#if sys import sys.FileSystem; #else import funkin.backend.web.WebFileSystem as FileSystem; #end
+ #end
+ import flixel.util.FlxColor;
+ 
+diff --git a/source/funkin/editors/charter/CharterSelection.hx b/source/funkin/editors/charter/CharterSelection.hx
+index e7eee280..b4b4b308 100644
+--- a/source/funkin/editors/charter/CharterSelection.hx
++++ b/source/funkin/editors/charter/CharterSelection.hx
+@@ -116,17 +116,17 @@ class CharterSelectionScreen extends EditorTreeMenuScreen {
+ 		#if sys
+ 		// Make Directories
+ 		CoolUtil.addMissingFolders(songFolder);
+-		sys.FileSystem.createDirectory('$songFolder/song');
+-		sys.FileSystem.createDirectory('$songFolder/charts');
++		#if sys sys.FileSystem #else funkin.backend.web.WebFileSystem #end.createDirectory('$songFolder/song');
++		#if sys sys.FileSystem #else funkin.backend.web.WebFileSystem #end.createDirectory('$songFolder/charts');
+ 
+ 		// Save Files
+ 		var instSuffix = creation.meta.instSuffix != null ? creation.meta.instSuffix : '', vocalsSuffix = creation.meta.vocalsSuffix != null ? creation.meta.vocalsSuffix : '';
+ 		CoolUtil.safeSaveFile('$songFolder/meta${variant != null ? "-" + variant : ""}.json', Json.stringify(Chart.filterMetaForSaving(creation.meta), null, Flags.JSON_PRETTY_PRINT));
+-		if (creation.instBytes != null) sys.io.File.saveBytes('$songFolder/song/Inst$instSuffix.${creation.instExt}', creation.instBytes);
+-		if (creation.voicesBytes != null) sys.io.File.saveBytes('$songFolder/song/Voices$vocalsSuffix.${creation.voicesExt}', creation.voicesBytes);
++		if (creation.instBytes != null) #if sys sys.io.File #else funkin.backend.web.WebFile #end.saveBytes('$songFolder/song/Inst$instSuffix.${creation.instExt}', creation.instBytes);
++		if (creation.voicesBytes != null) #if sys sys.io.File #else funkin.backend.web.WebFile #end.saveBytes('$songFolder/song/Voices$vocalsSuffix.${creation.voicesExt}', creation.voicesBytes);
+ 
+-		if (creation.playerVocals != null) sys.io.File.saveBytes('$songFolder/song/Voices-Player$vocalsSuffix.${creation.playerExt}', creation.playerVocals);
+-		if (creation.oppVocals != null) sys.io.File.saveBytes('$songFolder/song/Voices-Opponent$vocalsSuffix.${creation.oppExt}', creation.oppVocals);
++		if (creation.playerVocals != null) #if sys sys.io.File #else funkin.backend.web.WebFile #end.saveBytes('$songFolder/song/Voices-Player$vocalsSuffix.${creation.playerExt}', creation.playerVocals);
++		if (creation.oppVocals != null) #if sys sys.io.File #else funkin.backend.web.WebFile #end.saveBytes('$songFolder/song/Voices-Opponent$vocalsSuffix.${creation.oppExt}', creation.oppVocals);
+ 		#end
+ 
+ 		if (callback != null) callback(songFolder);
+diff --git a/source/funkin/editors/ui/UIFileExplorer.hx b/source/funkin/editors/ui/UIFileExplorer.hx
+index 316d835a..15c8fb60 100644
+--- a/source/funkin/editors/ui/UIFileExplorer.hx
++++ b/source/funkin/editors/ui/UIFileExplorer.hx
+@@ -93,7 +93,7 @@ class UIFileExplorer extends UISliceSprite {
+ 
+ 	public function loadFile(path:String) {
+ 		if (path == null) return;
+-		file = cast sys.io.File.getBytes(filePath = path);
++		file = cast #if sys sys.io.File #else funkin.backend.web.WebFile #end.getBytes(filePath = path);
+ 		fileExt = haxe.io.Path.extension(filePath);
+ 		deleteButton.visible = deleteButton.selectable = deleteIcon.visible = !(uploadButton.visible = uploadButton.selectable = false);
+ 
+diff --git a/source/funkin/editors/ui/UIImageExplorer.hx b/source/funkin/editors/ui/UIImageExplorer.hx
+index d9a5b456..aae72be3 100644
+--- a/source/funkin/editors/ui/UIImageExplorer.hx
++++ b/source/funkin/editors/ui/UIImageExplorer.hx
+@@ -8,8 +8,8 @@ import haxe.Json;
+ import haxe.io.Bytes;
+ import haxe.io.Path;
+ import openfl.display.BitmapData;
+-import sys.FileSystem;
+-import sys.io.File;
++#if sys import sys.FileSystem; #else import funkin.backend.web.WebFileSystem as FileSystem; #end
++#if sys import sys.io.File; #else import funkin.backend.web.WebFile as File; #end
+ import animate.FlxAnimateJson;
+ import funkin.backend.assets.ModsFolder;
+ 
+@@ -210,7 +210,7 @@ class UIImageExplorer extends UIFileExplorer {
+ 				size += info.size;
+ 
+ 				spritemapPath = spritemapPath.replace('\\', '/');
+-				imageFiles.set(Path.withoutDirectory(spritemapPath), sys.io.File.getBytes(spritemapPath));
++				imageFiles.set(Path.withoutDirectory(spritemapPath), #if sys sys.io.File #else funkin.backend.web.WebFile #end.getBytes(spritemapPath));
+ 			}
+ 
+ 			for (spritemap in spritemaps) {
+@@ -220,10 +220,10 @@ class UIImageExplorer extends UIFileExplorer {
+ 				size += info.size;
+ 
+ 				spritemapPath = spritemapPath.replace('\\', '/');
+-				imageFiles.set(Path.withoutDirectory(spritemapPath), sys.io.File.getBytes(spritemapPath));
++				imageFiles.set(Path.withoutDirectory(spritemapPath), #if sys sys.io.File #else funkin.backend.web.WebFile #end.getBytes(spritemapPath));
+ 			}
+ 
+-			file = cast sys.io.File.getBytes(filePath = spritemapPath);
++			file = cast #if sys sys.io.File #else funkin.backend.web.WebFile #end.getBytes(filePath = spritemapPath);
+ 			image = BitmapData.fromBytes(file).crop();
+ 
+ 		} else {
+diff --git a/source/funkin/game/Character.hx b/source/funkin/game/Character.hx
+index 71135474..d83654f7 100644
+--- a/source/funkin/game/Character.hx
++++ b/source/funkin/game/Character.hx
+@@ -1,6 +1,6 @@
+ package funkin.game;
+ 
+-import sys.FileSystem;
++#if sys import sys.FileSystem; #else import funkin.backend.web.WebFileSystem as FileSystem; #end
+ import flixel.util.FlxSpriteUtil;
+ import openfl.display.Graphics;
+ import flixel.util.typeLimit.OneOfTwo;
+diff --git a/source/funkin/game/PlayState.hx b/source/funkin/game/PlayState.hx
+index 8e5fcac2..27a4459f 100644
+--- a/source/funkin/game/PlayState.hx
++++ b/source/funkin/game/PlayState.hx
+@@ -962,6 +962,10 @@ class PlayState extends MusicBeatState
+ 		__updateNote_event = EventManager.get(NoteUpdateEvent);
+ 
+ 		gameAndCharsCall("postCreate", null, "gamePostCreate");
++		#if WEB_AUTOTEST
++		if (js.Browser.location.search.indexOf("bot") >= 0)
++			for (s in strumLines.members) s.cpu = true;
++		#end
+ 	}
+ 
+ 	/**
+diff --git a/source/funkin/game/cutscenes/VideoCutscene.hx b/source/funkin/game/cutscenes/VideoCutscene.hx
+index 9d035f8d..65880b78 100644
+--- a/source/funkin/game/cutscenes/VideoCutscene.hx
++++ b/source/funkin/game/cutscenes/VideoCutscene.hx
+@@ -10,7 +10,7 @@ import haxe.io.FPHelper;
+ import haxe.io.Path;
+ import haxe.xml.Access;
+ #if sys
+-import sys.io.File;
++#if sys import sys.io.File; #else import funkin.backend.web.WebFile as File; #end
+ #end
+ #if VIDEO_CUTSCENES
+ import hxvlc.flixel.FlxVideoSprite;
+diff --git a/source/funkin/import.hx b/source/funkin/import.hx
+index e64b0f8a..cfd89afc 100644
+--- a/source/funkin/import.hx
++++ b/source/funkin/import.hx
+@@ -1,4 +1,9 @@
+ #if !macro
++#if !sys
++import funkin.backend.web.WebFileSystem as FileSystem;
++import funkin.backend.web.WebFile as File;
++import funkin.backend.web.WebSys as Sys;
++#end
+ import funkin.backend.system.Main;
+ import funkin.backend.assets.Paths;
+ import funkin.backend.MusicBeatState;
+diff --git a/source/funkin/menus/ModSwitchMenu.hx b/source/funkin/menus/ModSwitchMenu.hx
+index f7ed9671..b2f781aa 100644
+--- a/source/funkin/menus/ModSwitchMenu.hx
++++ b/source/funkin/menus/ModSwitchMenu.hx
+@@ -8,7 +8,7 @@ import funkin.backend.system.framerate.Framerate;
+ import funkin.backend.assets.ModsFolder;
+ import funkin.backend.FunkinText;
+ import haxe.io.Path;
+-import sys.FileSystem;
++#if sys import sys.FileSystem; #else import funkin.backend.web.WebFileSystem as FileSystem; #end
+ 
+ class ModSwitchMenu extends MusicBeatSubstate {
+ 	var disableConf:Map<String, Map<String, String>>;
+diff --git a/source/funkin/menus/ui/Alphabet.hx b/source/funkin/menus/ui/Alphabet.hx
+index e744dba6..37b12f8a 100644
+--- a/source/funkin/menus/ui/Alphabet.hx
++++ b/source/funkin/menus/ui/Alphabet.hx
+@@ -545,7 +545,7 @@ class Alphabet extends FlxSprite {
+ 				final sheet = node.firstChild().nodeValue.trim();
+ 				sheets.push(sheet);
+ 			case "defaultAnim":
+-				var idx = ["UPPER", "LOWER"].indexOf(node.get("casing").toUpperCase()) + 1;
++				var idx = ["UPPER", "LOWER"].indexOf((node.get("casing") ?? "").toUpperCase()) + 1;
+ 
+ 				var angle:Float = Std.parseFloat(node.get("angle")).getDefaultFloat(0.0);
+ 				var rad = angle * FlxAngle.TO_RAD;

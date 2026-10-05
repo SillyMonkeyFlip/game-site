@@ -1,0 +1,15 @@
+<!DOCTYPE codename-engine-stage>
+<stage folder="stages/satstat/" name="satellite-station">
+	<sprite type="none" sprite="walk_bg" name="walkbg"/>
+	<sprite type="none" sprite="bg_1" name="bg1"/>
+	<sprite type="none" sprite="bg_bridge_2" name="bgbridge"/>
+	<sprite type="none" sprite="bg_bridge" name="bgbridge2"/>
+	<sprite type="none" sprite="green" name="green"/>
+	<girlfriend/>
+	<dad/>
+	<boyfriend/>
+	<sprite type="none" sprite="scary-lion/sl_0" name="sl1"/>
+	<sprite type="none" sprite="scary-lion/sl_1" name="sl2"/>
+	<sprite type="none" sprite="scary-lion/sl_2" name="sl3"/>
+	<sprite type="none" sprite="scary-lion/sl_3" name="sl4"/>
+</stage>

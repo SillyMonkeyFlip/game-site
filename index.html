@@ -6,6 +6,12 @@
 <title>Boring game site</title>
 <meta name="description" content="Boring game site — play browser games.">
 <link rel="icon" type="image/png" href="favicon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<meta name="theme-color" content="#05060a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Boring games">
 <style>
   @font-face {
     font-family: "VCR";
@@ -420,6 +426,16 @@
       <h4>// ACCENT COLOR</h4>
       <div class="swatches" id="swatches"></div>
     </div>
+    <div class="group" id="appGroup">
+      <h4>// APP</h4>
+      <div class="row" style="cursor:default; display:block">
+        <div id="appText">Install this site as an app<small>Opens in its own window with an icon in your launcher/shelf.</small></div>
+        <button class="btn primary" id="installBtn" style="margin-top:12px">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5M5 21h14"/></svg>
+          Install app
+        </button>
+      </div>
+    </div>
     <div class="group">
       <button class="btn" id="resetSettings">Reset to defaults</button>
     </div>
@@ -646,6 +662,30 @@ function setDrawer(open) {
 $("#openSettings").onclick = () => setDrawer(true);
 $("#closeSettings").onclick = scrim.onclick = () => setDrawer(false);
 document.addEventListener("keydown", e => { if (e.key === "Escape" && drawer.classList.contains("open")) setDrawer(false); });
+
+/* ---------- Install as app (PWA) ---------- */
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}
+let installEvt = null;
+const installBtn = $("#installBtn"), appText = $("#appText");
+const standalone = matchMedia("(display-mode: standalone)").matches || matchMedia("(display-mode: window-controls-overlay)").matches || navigator.standalone;
+function showInstalled() {
+  appText.innerHTML = "Installed<small>You're using the app version. Find it in your launcher/shelf.</small>";
+  installBtn.style.display = "none";
+}
+if (standalone) showInstalled();
+window.addEventListener("beforeinstallprompt", e => { e.preventDefault(); installEvt = e; });
+window.addEventListener("appinstalled", () => { installEvt = null; showInstalled(); });
+installBtn.onclick = async () => {
+  if (installEvt) {
+    installEvt.prompt();
+    await installEvt.userChoice;
+    installEvt = null;
+  } else {
+    appText.innerHTML = "Install from the browser menu<small>Click ⋮ (top right of Chrome) → Cast, save, and share → Install page as app. If it's already installed, open it from your launcher.</small>";
+  }
+};
 
 render(GAMES);
 route();

@@ -2,7 +2,7 @@
    Caches only the site shell (page, font, icons, covers) so the app opens fast.
    Game files are NOT cached here — they load straight from the network,
    so they never go stale. Bump VERSION whenever you change game/index.html. */
-const VERSION = "bgs-v2";
+const VERSION = "bgs-v3";
 const SHELL = [
   "game/",
   "images/found-me.png",

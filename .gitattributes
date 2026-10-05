@@ -1,2 +1,5 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+
+# Never change line endings inside game files (some engines check exact file sizes)
+Games/** -text

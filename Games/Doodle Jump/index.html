@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Doodle Jump</title>
+<script src="../sound.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: #2a2a2a; overflow: hidden; user-select: none; touch-action: none; }
+  body { display: grid; place-items: center; }
+  canvas { display: block; height: min(100vh, 150vw); aspect-ratio: 2 / 3; }
+</style>
+</head>
+<body>
+<canvas id="c" width="400" height="600"></canvas>
+<script>
+const cv = document.getElementById("c"), ctx = cv.getContext("2d");
+const W = 400, H = 600, GRAV = 0.32, JUMP = -11, SPRING = -20, MAXX = 6.5;
+
+let p, plats, camY, score, best, state, keys = {}, highest, particles, frame, tilt = 0;
+try { best = +localStorage.getItem("doodle-best") || 0; } catch (e) { best = 0; }
+
+function reset() {
+  p = { x: W / 2 - 20, y: H - 120, vx: 0, vy: JUMP, w: 40, h: 40, face: 1 };
+  plats = []; camY = 0; score = 0; highest = H; particles = []; frame = 0;
+  plats.push({ x: W / 2 - 30, y: H - 40, w: 60, type: "normal" });
+  let y = H - 40;
+  while (y > -H) { y -= 50 + Math.random() * 30; addPlat(y); }
+  state = "play";
+}
+function addPlat(y) {
+  const height = Math.max(0, -y) / 100;           // how far up we are
+  const r = Math.random();
+  const breakChance = Math.min(.2, .03 + height * .002);
+  const moveChance = Math.min(.35, height * .004);
+  let type = "normal";
+  if (r < breakChance) type = "break";
+  else if (r < breakChance + moveChance) type = "move";
+  const pl = { x: Math.random() * (W - 60), y, w: 60, type, vx: type === "move" ? (Math.random() < .5 ? -1 : 1) * (1 + Math.min(2, height * .01)) : 0 };
+  if (type !== "break" && Math.random() < .06) pl.spring = { off: 10 + Math.random() * 30, used: 0 };
+  plats.push(pl);
+  // a breakable platform is never the only way up: add a solid one near it
+  if (type === "break") plats.push({ x: Math.random() * (W - 60), y: y - 20, w: 60, type: "normal" });
+  highest = Math.min(highest, y);
+}
+
+function update() {
+  frame++;
+  if (state !== "play" && state !== "falling") return;
+  const left = keys.a || keys.arrowleft, right = keys.d || keys.arrowright;
+  const input = (right ? 1 : 0) - (left ? 1 : 0) + tilt;
+  if (input) { p.vx += input * 0.6; p.face = Math.sign(input); } else p.vx *= 0.88;
+  p.vx = Math.max(-MAXX, Math.min(MAXX, p.vx));
+  p.x += p.vx;
+  if (p.x > W) p.x = -p.w; if (p.x + p.w < 0) p.x = W;
+  p.vy += GRAV; p.y += p.vy;
+
+  if (p.vy > 0 && state === "play") {
+    for (const pl of plats) {
+      if (pl.broken) continue;
+      const feet = p.y + p.h, prevFeet = feet - p.vy;
+      if (p.x + p.w - 10 > pl.x && p.x + 10 < pl.x + pl.w && feet >= pl.y && prevFeet <= pl.y + 2) {
+        if (pl.spring && p.x + p.w / 2 > pl.x + pl.spring.off - 6 && p.x + p.w / 2 < pl.x + pl.spring.off + 20) {
+          p.vy = SPRING; pl.spring.used = 12; SFX.play("spring"); p.y = pl.y - p.h; break;
+        }
+        if (pl.type === "break") { pl.broken = true; pl.fall = 0; SFX.play("hit"); continue; }
+        p.vy = JUMP; p.y = pl.y - p.h; SFX.play("jump");
+        for (let i = 0; i < 4; i++) particles.push({ x: p.x + p.w / 2, y: pl.y, vx: (Math.random() - .5) * 3, vy: -Math.random() * 2, life: 20 });
+        break;
+      }
+    }
+  }
+  plats.forEach(pl => {
+    if (pl.type === "move") { pl.x += pl.vx; if (pl.x < 0 || pl.x + pl.w > W) pl.vx *= -1; }
+    if (pl.broken) { pl.fall += 0.5; pl.y += pl.fall; }
+    if (pl.spring && pl.spring.used) pl.spring.used--;
+  });
+  // camera follows when the player goes above the middle
+  const lim = camY + H * 0.4;
+  if (p.y < lim) camY = p.y - H * 0.4;
+  score = Math.max(score, Math.floor(-(camY) / 4));
+  while (highest > camY - 80) addPlat(highest - (48 + Math.random() * (30 + Math.min(40, score / 60))));
+  plats = plats.filter(pl => pl.y < camY + H + 60);
+  particles.forEach(q => { q.x += q.vx; q.y += q.vy; q.vy += .15; q.life--; });
+  particles = particles.filter(q => q.life > 0);
+
+  if (state === "play" && p.y > camY + H) {
+    state = "falling"; SFX.play("fall");
+    if (score > best) { best = score; try { localStorage.setItem("doodle-best", best); } catch (e) {} }
+  }
+  if (state === "falling") { camY += 14; if (p.y > camY + H + 400) state = "over"; }
+}
+
+/* ---------- Drawing ---------- */
+function paper() {
+  ctx.fillStyle = "#f8f4e8"; ctx.fillRect(0, 0, W, H);
+  ctx.strokeStyle = "#e6dcc5"; ctx.lineWidth = 1;
+  const off = ((-camY) % 20 + 20) % 20;
+  for (let y = off; y < H; y += 20) { ctx.beginPath(); ctx.moveTo(0, y + .5); ctx.lineTo(W, y + .5); ctx.stroke(); }
+  for (let x = 0; x < W; x += 20) { ctx.beginPath(); ctx.moveTo(x + .5, 0); ctx.lineTo(x + .5, H); ctx.stroke(); }
+}
+function rr(x, y, w, h, r) { ctx.beginPath(); ctx.roundRect ? ctx.roundRect(x, y, w, h, r) : ctx.rect(x, y, w, h); }
+function platform(pl) {
+  const y = pl.y - camY;
+  const col = { normal: ["#6fc23a", "#3e7c1c"], move: ["#4aa8e0", "#1f5d8a"], break: ["#b08350", "#6e4c26"] }[pl.type];
+  ctx.save();
+  if (pl.broken) { ctx.translate(pl.x + pl.w / 2, y); ctx.rotate(.3); ctx.translate(-pl.x - pl.w / 2, -y); }
+  ctx.fillStyle = col[0]; ctx.strokeStyle = col[1]; ctx.lineWidth = 2;
+  rr(pl.x, y, pl.w, 14, 6); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "rgba(255,255,255,.35)"; rr(pl.x + 5, y + 2, pl.w - 10, 4, 2); ctx.fill();
+  if (pl.type === "break") { ctx.strokeStyle = col[1]; ctx.beginPath(); ctx.moveTo(pl.x + pl.w / 2 - 4, y); ctx.lineTo(pl.x + pl.w / 2 + 3, y + 7); ctx.lineTo(pl.x + pl.w / 2 - 2, y + 14); ctx.stroke(); }
+  ctx.restore();
+  if (pl.spring) {
+    const sx = pl.x + pl.spring.off, h = pl.spring.used ? 18 : 10;
+    ctx.strokeStyle = "#777"; ctx.lineWidth = 2; ctx.beginPath();
+    for (let i = 0; i <= 4; i++) ctx.lineTo(sx + (i % 2 ? 14 : 0), y - i * h / 4);
+    ctx.stroke();
+    ctx.fillStyle = "#aaa"; ctx.fillRect(sx - 2, y - h - 3, 18, 4);
+  }
+}
+function doodler() {
+  const x = p.x, y = p.y - camY, f = p.face;
+  ctx.save(); ctx.translate(x + p.w / 2, y); ctx.scale(f, 1); ctx.translate(-p.w / 2, 0);
+  ctx.lineWidth = 2.5; ctx.strokeStyle = "#3b3b1a";
+  // legs
+  const kick = p.vy < -4 ? 3 : 0;
+  [8, 16, 24].forEach(lx => { ctx.beginPath(); ctx.moveTo(lx, 32); ctx.lineTo(lx - kick, 40); ctx.lineTo(lx + 4 - kick, 40); ctx.stroke(); });
+  // body
+  ctx.fillStyle = "#c8d93a"; rr(2, 4, 32, 30, 14); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "#4c9a3a"; ctx.fillRect(3, 24, 30, 4); ctx.fillRect(3, 30, 30, 3);
+  // snout
+  ctx.fillStyle = "#c8d93a"; rr(28, 10, 14, 10, 4); ctx.fill(); ctx.stroke();
+  ctx.fillStyle = "#3b3b1a"; ctx.fillRect(40, 11, 2, 8);
+  // eyes
+  ctx.fillStyle = "#000"; ctx.beginPath(); ctx.arc(22, 12, 2.4, 0, 7); ctx.arc(28, 12, 2.4, 0, 7); ctx.fill();
+  ctx.restore();
+}
+function text(t, y, size, color = "#3b3b1a", align = "center") {
+  ctx.font = `bold ${size}px "Comic Sans MS", "Chalkboard SE", cursive`; ctx.fillStyle = color; ctx.textAlign = align;
+  ctx.fillText(t, align === "left" ? 14 : W / 2, y);
+}
+function draw() {
+  paper();
+  plats.forEach(platform);
+  particles.forEach(q => { ctx.fillStyle = `rgba(80,140,40,${q.life / 20})`; ctx.fillRect(q.x, q.y - camY, 3, 3); });
+  if (state !== "ready") doodler();
+  // top bar
+  ctx.fillStyle = "rgba(248,244,232,.85)"; ctx.fillRect(0, 0, W, 40);
+  ctx.strokeStyle = "#c9bc98"; ctx.beginPath(); ctx.moveTo(0, 40.5); ctx.lineTo(W, 40.5); ctx.stroke();
+  text(score, 28, 22, "#3b3b1a", "left");
+  ctx.textAlign = "right"; ctx.font = 'bold 14px "Comic Sans MS", cursive'; ctx.fillStyle = "#8a7d5a"; ctx.fillText("best " + best, W - 60, 26);
+  if (state === "ready") {
+    text("doodle jump", 200, 46, "#c1440e");
+    text("A / D or ← / → to move", 270, 18);
+    text("Bounce up as high as you can!", 300, 18);
+    text("Press Space or tap to start", 360, 20, "#4c9a3a");
+  }
+  if (state === "over") {
+    text("game over!", 220, 44, "#c1440e");
+    text("your score: " + score, 280, 22);
+    text("your best: " + best, 312, 22);
+    text("Press Space or tap to play again", 380, 18, "#4c9a3a");
+  }
+}
+let acc = 0, last = performance.now();
+function loop(now) {
+  acc += Math.min(100, now - last); last = now;
+  while (acc >= 1000 / 60) { update(); acc -= 1000 / 60; }
+  draw(); requestAnimationFrame(loop);
+}
+addEventListener("keydown", e => {
+  const k = e.key.toLowerCase();
+  if ([" ", "arrowleft", "arrowright", "arrowup", "arrowdown"].includes(k)) e.preventDefault();
+  keys[k] = true;
+  if (k === "r") reset();
+  if ((k === " " || k === "enter") && (state === "ready" || state === "over")) reset();
+});
+addEventListener("keyup", e => { keys[e.key.toLowerCase()] = false; });
+addEventListener("blur", () => { keys = {}; });
+/* touch: tap to start, hold left/right half of the screen to move */
+cv.addEventListener("pointerdown", e => {
+  if (state === "ready" || state === "over") { reset(); return; }
+  const r = cv.getBoundingClientRect();
+  tilt = e.clientX - r.left < r.width / 2 ? -1 : 1;
+});
+addEventListener("pointerup", () => tilt = 0);
+state = "ready"; p = { x: 0, y: 0, vx: 0, vy: 0, w: 40, h: 40, face: 1 }; plats = []; camY = 0; score = 0; particles = []; highest = H;
+for (let y = H - 40; y > 0; y -= 70) plats.push({ x: Math.random() * (W - 60), y, w: 60, type: "normal" });
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

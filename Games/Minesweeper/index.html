@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Minesweeper</title>
+<style>
+  :root { --bg: #121212; --panel: #1c1c1c; --line: #3a3a3a; --text: #e6e6e6; --muted: #9a9a9a; --accent: #9bd13b; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--text); font-family: Verdana, Tahoma, Arial, sans-serif;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px;
+    overflow: auto; user-select: none; -webkit-user-select: none; padding: 12px;
+  }
+  .modes { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+  .modes button {
+    font: inherit; font-size: 13px; padding: 6px 12px; background: #222; color: var(--text);
+    border: 1px solid #555; cursor: pointer;
+  }
+  .modes button:hover { border-color: var(--accent); }
+  .modes button[aria-pressed="true"] { background: var(--accent); color: #000; border-color: var(--accent); font-weight: 700; }
+  .game { background: var(--panel); border: 1px solid var(--line); padding: 10px; }
+  .top {
+    display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px;
+    background: #0a0a0a; border: 1px solid var(--line); padding: 6px 8px;
+  }
+  .lcd { font-family: "Courier New", monospace; font-weight: 700; font-size: 26px; color: #ff3b30; background: #000; padding: 0 6px; min-width: 64px; text-align: center; letter-spacing: 2px; }
+  .face { width: 40px; height: 40px; font-size: 24px; line-height: 1; background: #2a2a2a; border: 1px solid #555; cursor: pointer; }
+  .face:active { background: #1a1a1a; }
+  .grid { display: grid; gap: 0; border: 1px solid var(--line); }
+  .c {
+    width: var(--s); height: var(--s); font-size: calc(var(--s) * .58); font-weight: 900;
+    display: grid; place-items: center; cursor: pointer;
+    background: #3d3d3d; border-top: 2px solid #5a5a5a; border-left: 2px solid #5a5a5a;
+    border-right: 2px solid #262626; border-bottom: 2px solid #262626;
+  }
+  .c:hover { background: #474747; }
+  .c.open { background: #1f1f1f; border: 1px solid #2c2c2c; cursor: default; }
+  .c.boom { background: #c62828; }
+  .c.wrong { background: #3d2020; }
+  .n1 { color: #4fa3ff; } .n2 { color: #5cd05c; } .n3 { color: #ff5a5a; } .n4 { color: #b77cff; }
+  .n5 { color: #ffa94d; } .n6 { color: #3fd0e0; } .n7 { color: #eee; } .n8 { color: #999; }
+  .info { color: var(--muted); font-size: 12px; text-align: center; line-height: 1.6; }
+  .info b { color: var(--text); font-weight: 400; }
+  .custom { display: none; gap: 8px; align-items: center; font-size: 13px; flex-wrap: wrap; justify-content: center; }
+  .custom.show { display: flex; }
+  .custom input { width: 58px; font: inherit; padding: 4px; background: #000; color: var(--text); border: 1px solid #555; }
+  .custom button { font: inherit; font-size: 13px; padding: 5px 12px; background: var(--accent); color: #000; border: 0; font-weight: 700; cursor: pointer; }
+  .flagmode { font: inherit; font-size: 13px; padding: 6px 12px; background: #222; color: var(--text); border: 1px solid #555; cursor: pointer; display: none; }
+  .flagmode[aria-pressed="true"] { background: #ff3b30; border-color: #ff3b30; color: #fff; font-weight: 700; }
+  @media (hover: none) { .flagmode { display: inline-block; } }
+</style>
+</head>
+<body>
+<div class="modes" id="modes"></div>
+<div class="custom" id="custom">
+  Width <input id="cw" type="number" min="5" max="40" value="20">
+  Height <input id="ch" type="number" min="5" max="30" value="15">
+  Mines <input id="cm" type="number" min="1" max="999" value="50">
+  <button id="cgo">Start</button>
+</div>
+<div class="game">
+  <div class="top">
+    <div class="lcd" id="mines">010</div>
+    <button class="face" id="face" title="New game (R)">🙂</button>
+    <div class="lcd" id="time">000</div>
+  </div>
+  <div class="grid" id="grid"></div>
+</div>
+<button class="flagmode" id="flagMode" aria-pressed="false">🚩 Flag mode</button>
+<div class="info" id="info">
+  Left click to dig &nbsp;·&nbsp; Right click to flag &nbsp;·&nbsp; Click a number to dig around it<br>
+  <b>R</b> new game &nbsp;·&nbsp; Best time: <b id="best">none yet</b>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const MODES = { Beginner: [9, 9, 10], Intermediate: [16, 16, 40], Expert: [30, 16, 99], Custom: null };
+let mode = "Beginner", W, H, M, cells, mineSet, first, over, flags, opened, timer, startT, flagMode = false;
+try { mode = localStorage.getItem("ms-mode") || mode; } catch (e) {}
+let custom = [20, 15, 50];
+try { custom = JSON.parse(localStorage.getItem("ms-custom")) || custom; } catch (e) {}
+
+Object.keys(MODES).forEach(name => {
+  const b = document.createElement("button"); b.textContent = name;
+  b.onclick = () => { mode = name; try { localStorage.setItem("ms-mode", mode); } catch (e) {} paintModes(); if (name !== "Custom") newGame(); };
+  $("modes").appendChild(b);
+});
+function paintModes() {
+  document.querySelectorAll("#modes button").forEach(b => b.setAttribute("aria-pressed", b.textContent === mode));
+  $("custom").classList.toggle("show", mode === "Custom");
+  [$("cw").value, $("ch").value, $("cm").value] = custom;
+}
+$("cgo").onclick = () => {
+  const w = Math.max(5, Math.min(40, +$("cw").value || 20)), h = Math.max(5, Math.min(30, +$("ch").value || 15));
+  const m = Math.max(1, Math.min(w * h - 9, +$("cm").value || 1));
+  custom = [w, h, m]; try { localStorage.setItem("ms-custom", JSON.stringify(custom)); } catch (e) {}
+  paintModes(); newGame();
+};
+
+const bestKey = () => "ms-best:" + W + "x" + H + "x" + M;
+function showBest() {
+  let b = null; try { b = localStorage.getItem(bestKey()); } catch (e) {}
+  $("best").textContent = b ? b + "s" : "none yet";
+}
+const pad = n => String(Math.max(-99, Math.min(999, n))).padStart(3, "0");
+
+function newGame() {
+  [W, H, M] = MODES[mode] || custom;
+  clearInterval(timer); timer = null;
+  first = true; over = false; flags = 0; opened = 0;
+  cells = []; mineSet = new Set();
+  const g = $("grid");
+  const size = Math.max(18, Math.min(36, Math.floor((innerWidth - 60) / W), Math.floor((innerHeight - 230) / H)));
+  g.style.setProperty("--s", size + "px");
+  g.style.gridTemplateColumns = `repeat(${W}, var(--s))`;
+  g.innerHTML = "";
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const el = document.createElement("div"); el.className = "c";
+    const c = { x, y, el, mine: false, n: 0, open: false, flag: false };
+    cells.push(c); g.appendChild(el);
+  }
+  $("mines").textContent = pad(M); $("time").textContent = "000"; $("face").textContent = "🙂";
+  showBest();
+}
+const at = (x, y) => (x < 0 || y < 0 || x >= W || y >= H) ? null : cells[y * W + x];
+const around = c => { const r = []; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { if (dx || dy) { const n = at(c.x + dx, c.y + dy); if (n) r.push(n); } } return r; };
+
+function placeMines(safe) {
+  const banned = new Set([safe, ...around(safe)]);
+  const pool = cells.filter(c => !banned.has(c));
+  const useSafeZone = pool.length >= M;
+  const choices = useSafeZone ? pool : cells.filter(c => c !== safe);
+  for (let i = 0; i < M; i++) {
+    const j = i + Math.floor(Math.random() * (choices.length - i));
+    [choices[i], choices[j]] = [choices[j], choices[i]];
+    choices[i].mine = true;
+  }
+  cells.forEach(c => c.n = around(c).filter(n => n.mine).length);
+}
+
+function reveal(c) {
+  if (c.open || c.flag || over) return;
+  if (first) {
+    first = false; placeMines(c);
+    startT = Date.now();
+    timer = setInterval(() => $("time").textContent = pad(Math.floor((Date.now() - startT) / 1000)), 250);
+  }
+  if (c.mine) return lose(c);
+  const stack = [c];
+  while (stack.length) {
+    const cur = stack.pop();
+    if (cur.open || cur.flag) continue;
+    cur.open = true; opened++;
+    cur.el.className = "c open" + (cur.n ? " n" + cur.n : "");
+    cur.el.textContent = cur.n || "";
+    if (!cur.n) around(cur).forEach(n => { if (!n.open && !n.mine) stack.push(n); });
+  }
+  if (opened === W * H - M) win();
+}
+function chord(c) {
+  if (!c.open || !c.n || over) return;
+  const ns = around(c);
+  if (ns.filter(n => n.flag).length !== c.n) return;
+  ns.forEach(n => { if (!n.flag && !n.open) reveal(n); });
+}
+function toggleFlag(c) {
+  if (c.open || over || first && false) return;
+  c.flag = !c.flag; flags += c.flag ? 1 : -1;
+  c.el.textContent = c.flag ? "🚩" : "";
+  $("mines").textContent = pad(M - flags);
+}
+function lose(hit) {
+  over = true; clearInterval(timer);
+  $("face").textContent = "😵";
+  cells.forEach(c => {
+    if (c.mine && !c.flag) { c.el.textContent = "💣"; c.el.classList.add("open"); }
+    if (!c.mine && c.flag) { c.el.classList.add("wrong"); c.el.textContent = "❌"; }
+  });
+  hit.el.classList.add("boom");
+}
+function win() {
+  over = true; clearInterval(timer);
+  $("face").textContent = "😎";
+  cells.forEach(c => { if (c.mine && !c.flag) { c.flag = true; c.el.textContent = "🚩"; } });
+  $("mines").textContent = "000";
+  const t = Math.max(1, Math.round((Date.now() - startT) / 1000));
+  $("time").textContent = pad(t);
+  let b = null; try { b = +localStorage.getItem(bestKey()) || null; } catch (e) {}
+  if (!b || t < b) { try { localStorage.setItem(bestKey(), t); } catch (e) {} }
+  showBest();
+}
+
+/* ---------- Input ---------- */
+const grid = $("grid");
+const cellOf = el => cells[[...grid.children].indexOf(el.closest(".c"))];
+let pressTimer = null, longPressed = false;
+grid.addEventListener("contextmenu", e => e.preventDefault());
+grid.addEventListener("mousedown", e => { if (!over && e.button === 0) $("face").textContent = "😮"; });
+document.addEventListener("mouseup", () => { if (!over) $("face").textContent = "🙂"; });
+grid.addEventListener("mouseup", e => {
+  const c = e.target.closest(".c") && cellOf(e.target); if (!c || longPressed) return;
+  if (e.button === 2) { c.open ? chord(c) : toggleFlag(c); return; }
+  if (e.button === 1) { chord(c); return; }
+  if (e.button !== 0) return;
+  if (flagMode && !c.open) toggleFlag(c);
+  else if (c.open) chord(c);
+  else reveal(c);
+});
+/* long-press to flag on touch screens */
+grid.addEventListener("touchstart", e => {
+  const c = e.target.closest(".c") && cellOf(e.target); if (!c) return;
+  longPressed = false;
+  pressTimer = setTimeout(() => { longPressed = true; if (!c.open) toggleFlag(c); navigator.vibrate && navigator.vibrate(30); }, 380);
+}, { passive: true });
+grid.addEventListener("touchend", e => {
+  clearTimeout(pressTimer);
+  if (longPressed) { e.preventDefault(); setTimeout(() => longPressed = false, 50); }
+});
+grid.addEventListener("touchmove", () => clearTimeout(pressTimer), { passive: true });
+$("face").onclick = () => { newGame(); $("face").blur(); };
+$("flagMode").onclick = () => { flagMode = !flagMode; $("flagMode").setAttribute("aria-pressed", flagMode); };
+document.addEventListener("keydown", e => {
+  if (e.target.tagName === "INPUT") { if (e.key === "Enter") $("cgo").click(); return; }
+  if (e.key.toLowerCase() === "r" || e.key === "F2") { e.preventDefault(); newGame(); }
+});
+
+paintModes();
+newGame();
+</script>
+</body>
+</html>

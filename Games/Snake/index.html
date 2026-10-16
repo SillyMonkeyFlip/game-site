@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Snake</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: #1d3a0f; color: #fff; font-family: Verdana, Tahoma, Arial, sans-serif;
+    display: grid; place-items: center; overflow: hidden; user-select: none;
+  }
+  .game { width: min(96vw, 96vh - 64px, 640px); }
+  .bar {
+    height: 56px; background: #4a752c; display: flex; align-items: center; gap: 22px; padding: 0 18px;
+    font-size: 20px; font-weight: 700;
+  }
+  .bar span { display: flex; align-items: center; gap: 8px; }
+  .bar .spacer { flex: 1; }
+  .bar button { font: inherit; font-size: 13px; font-weight: 700; padding: 6px 12px; background: #578a34; color: #fff; border: 0; cursor: pointer; }
+  .bar button:hover { background: #64a03c; }
+  .wrap { position: relative; }
+  canvas { display: block; width: 100%; aspect-ratio: 1; background: #578a34; }
+  .overlay {
+    position: absolute; inset: 0; display: none; place-items: center; background: rgba(0,0,0,.55);
+  }
+  .overlay.show { display: grid; }
+  .panel { background: #1c1c1c; border: 1px solid #3a3a3a; padding: 22px; width: min(92%, 440px); max-height: 94%; overflow-y: auto; }
+  .panel h2 { font-size: 24px; margin-bottom: 4px; }
+  .panel .msg { color: #bbb; font-size: 13px; margin-bottom: 16px; line-height: 1.5; }
+  .opt { margin-bottom: 14px; }
+  .opt h4 { font-size: 11px; color: #9bd13b; letter-spacing: .1em; font-family: "Courier New", monospace; margin-bottom: 6px; }
+  .seg { display: flex; flex-wrap: wrap; gap: 6px; }
+  .seg button {
+    font: inherit; font-size: 13px; padding: 6px 10px; background: #262626; color: #ddd;
+    border: 1px solid #444; cursor: pointer;
+  }
+  .seg button:hover { border-color: #9bd13b; }
+  .seg button[aria-pressed="true"] { background: #9bd13b; color: #000; border-color: #9bd13b; font-weight: 700; }
+  .mods button { text-align: left; }
+  .mods small { display: block; font-size: 10px; opacity: .75; font-weight: 400; }
+  .play {
+    width: 100%; margin-top: 6px; font: inherit; font-size: 16px; font-weight: 700; padding: 10px;
+    background: #9bd13b; color: #000; border: 0; cursor: pointer;
+  }
+  .hint { color: #888; font-size: 11px; text-align: center; margin-top: 10px; }
+</style>
+<script src="../sound.js"></script>
+<style>.sfx-btn { top: auto !important; bottom: 10px; }</style>
+</head>
+<body>
+<div class="game">
+  <div class="bar">
+    <span title="Score">
+      <svg width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="14" r="8" fill="#e7471d"/><path d="M12 6c0-2 1-3 3-4" stroke="#5a3a1a" stroke-width="2" fill="none"/><ellipse cx="15.5" cy="5" rx="3" ry="1.6" fill="#4caf50" transform="rotate(-25 15.5 5)"/></svg>
+      <b id="score">0</b>
+    </span>
+    <span title="Best for these settings">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="#ffc107"><path d="M6 3h12v3h3v3a5 5 0 0 1-5 5h-.3A5 5 0 0 1 13 16.9V19h3v2H8v-2h3v-2.1A5 5 0 0 1 8.3 14H8a5 5 0 0 1-5-5V6h3zm-1 5v1a3 3 0 0 0 2 2.8V8zm14 0h-2v3.8A3 3 0 0 0 19 9z"/></svg>
+      <b id="best">0</b>
+    </span>
+    <span class="spacer"></span>
+    <button id="menuBtn">Settings</button>
+  </div>
+  <div class="wrap">
+    <canvas id="c"></canvas>
+    <div class="overlay show" id="overlay">
+      <div class="panel">
+        <h2 id="title">Snake</h2>
+        <div class="msg" id="msg">Eat apples to grow. Don't hit the walls or yourself.</div>
+        <div class="opt"><h4>SPEED</h4><div class="seg" data-key="speed"></div></div>
+        <div class="opt"><h4>BOARD SIZE</h4><div class="seg" data-key="size"></div></div>
+        <div class="opt"><h4>APPLES</h4><div class="seg" data-key="apples"></div></div>
+        <div class="opt"><h4>MODIFIERS (pick any)</h4><div class="seg mods" id="mods"></div></div>
+        <button class="play" id="playBtn">Play</button>
+        <div class="hint">WASD or arrows to move &nbsp;·&nbsp; P to pause &nbsp;·&nbsp; R to restart &nbsp;·&nbsp; M to mute</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const $ = id => document.getElementById(id);
+const cv = $("c"), ctx = cv.getContext("2d");
+
+/* ---------- Options ---------- */
+const OPTIONS = {
+  speed: { Slow: 160, Normal: 115, Fast: 75, Insane: 50 },
+  size: { Small: 10, Medium: 17, Large: 24 },
+  apples: { "1": 1, "3": 3, "5": 5 }
+};
+const MODS = {
+  walls:      ["Walls", "A wall pops up every time you eat"],
+  borderless: ["Borderless", "Go off one edge, come out the other"],
+  portal:     ["Portal", "Apples come in pairs. Eat one, warp to the other"],
+  poison:     ["Poison", "Purple apples appear. Don't eat them"],
+  peaceful:   ["Peaceful", "You can't die. Crashes just stop you"],
+  speedup:    ["Speed up", "Get faster with every apple"],
+  reverse:    ["Reverse", "Eating flips you around, tail first"],
+  shrink:     ["Golden apples", "Sometimes a gold apple shrinks you for 5 points"]
+};
+let cfg = { speed: "Normal", size: "Medium", apples: "1", mods: [] };
+try { Object.assign(cfg, JSON.parse(localStorage.getItem("snake-cfg") || "{}")); } catch (e) {}
+const saveCfg = () => { try { localStorage.setItem("snake-cfg", JSON.stringify(cfg)); } catch (e) {} };
+const has = m => cfg.mods.includes(m);
+const bestKey = () => "snake-best:" + [cfg.speed, cfg.size, cfg.apples, ...cfg.mods.slice().sort()].join(",");
+const getBest = () => { try { return +localStorage.getItem(bestKey()) || 0; } catch (e) { return 0; } };
+
+document.querySelectorAll(".seg[data-key]").forEach(seg => {
+  const key = seg.dataset.key;
+  Object.keys(OPTIONS[key]).forEach(name => {
+    const b = document.createElement("button"); b.textContent = name;
+    b.onclick = () => { cfg[key] = name; saveCfg(); paintMenu(); newGame(false); };
+    seg.appendChild(b);
+  });
+});
+Object.entries(MODS).forEach(([id, [name, desc]]) => {
+  const b = document.createElement("button"); b.dataset.mod = id;
+  b.innerHTML = `${name}<small>${desc}</small>`;
+  b.onclick = () => {
+    cfg.mods = has(id) ? cfg.mods.filter(m => m !== id) : [...cfg.mods, id];
+    if (id === "peaceful" && has("peaceful")) cfg.mods = cfg.mods.filter(m => m !== "poison");
+    if (id === "poison" && has("poison")) cfg.mods = cfg.mods.filter(m => m !== "peaceful");
+    saveCfg(); paintMenu(); newGame(false);
+  };
+  $("mods").appendChild(b);
+});
+function paintMenu() {
+  document.querySelectorAll(".seg[data-key]").forEach(seg =>
+    seg.querySelectorAll("button").forEach(b => b.setAttribute("aria-pressed", b.textContent === cfg[seg.dataset.key])));
+  document.querySelectorAll("[data-mod]").forEach(b => b.setAttribute("aria-pressed", has(b.dataset.mod)));
+  $("best").textContent = getBest();
+}
+
+/* ---------- Game state ---------- */
+let N, cell, snake, dir, queue, apples, walls, score, alive, state, tickMs, acc, grow, lastT, deathFlash;
+
+function newGame(start) {
+  N = OPTIONS.size[cfg.size];
+  const px = Math.round(Math.min(cv.clientWidth || 640, 640) * devicePixelRatio);
+  cv.width = cv.height = px; cell = px / N;
+  const y = Math.floor(N / 2), x = Math.floor(N / 4);
+  snake = [{ x: x, y }, { x: x - 1, y }, { x: x - 2, y }];
+  dir = { x: 1, y: 0 }; queue = [];
+  apples = []; walls = []; score = 0; grow = 0; alive = true; deathFlash = 0;
+  tickMs = OPTIONS.speed[cfg.speed]; acc = 0;
+  fillApples();
+  $("score").textContent = 0; $("best").textContent = getBest();
+  state = start ? "play" : "menu";
+  if (start) $("overlay").classList.remove("show");
+  draw();
+}
+
+const key = p => p.x + "," + p.y;
+function occupied(p) {
+  return snake.some(s => s.x === p.x && s.y === p.y) || walls.some(w => w.x === p.x && w.y === p.y) || apples.some(a => a.x === p.x && a.y === p.y);
+}
+function freeCell(avoidHead = 3) {
+  const h = snake[0];
+  for (let i = 0; i < 500; i++) {
+    const p = { x: Math.floor(Math.random() * N), y: Math.floor(Math.random() * N) };
+    if (!occupied(p) && Math.abs(p.x - h.x) + Math.abs(p.y - h.y) >= avoidHead) return p;
+  }
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) if (!occupied({ x, y })) return { x, y };
+  return null;
+}
+function addApple(kind = "red") {
+  const p = freeCell(); if (!p) return null;
+  const a = { ...p, kind, born: performance.now() }; apples.push(a); return a;
+}
+function fillApples() {
+  const want = OPTIONS.apples[cfg.apples];
+  let reds = apples.filter(a => a.kind === "red").length;
+  while (reds < want) {
+    const a = addApple("red"); if (!a) break; reds++;
+    if (has("portal")) { const b = addApple("red"); if (b) { a.pair = b; b.pair = a; } }
+  }
+  if (has("poison") && apples.filter(a => a.kind === "poison").length < Math.ceil(want / 2) + Math.floor(score / 8)) addApple("poison");
+  if (has("shrink") && !apples.some(a => a.kind === "gold") && Math.random() < .25 && snake.length > 5) addApple("gold");
+}
+
+function turn(dx, dy) {
+  const lastDir = queue.length ? queue[queue.length - 1] : dir;
+  if (lastDir.x === -dx && lastDir.y === -dy) return;
+  if (lastDir.x === dx && lastDir.y === dy) return;
+  if (queue.length < 3) { queue.push({ x: dx, y: dy }); SFX.play("turn"); }
+}
+
+function step() {
+  if (queue.length) dir = queue.shift();
+  const head = snake[0];
+  let nx = head.x + dir.x, ny = head.y + dir.y;
+  if (has("borderless")) { nx = (nx + N) % N; ny = (ny + N) % N; }
+  const tailMoves = grow === 0;
+  const hitsWall = nx < 0 || ny < 0 || nx >= N || ny >= N || walls.some(w => w.x === nx && w.y === ny);
+  const body = tailMoves ? snake.slice(0, -1) : snake;
+  const hitsSelf = body.some(s => s.x === nx && s.y === ny);
+  if (hitsWall || hitsSelf) {
+    if (has("peaceful")) { if (queue.length || !step.bumped) SFX.play("land"); step.bumped = true; queue = []; return; }
+    return die();
+  }
+  step.bumped = false;
+  snake.unshift({ x: nx, y: ny });
+  if (grow > 0) grow--; else snake.pop();
+
+  const ai = apples.findIndex(a => a.x === nx && a.y === ny);
+  if (ai >= 0) eat(apples[ai]);
+}
+function eat(a) {
+  apples = apples.filter(x => x !== a);
+  if (a.kind === "poison") return die();
+  SFX.play(a.kind === "gold" ? "gold" : a.pair ? "warp" : "eat");
+  if (a.kind === "gold") {
+    score += 5;
+    const cut = Math.floor(snake.length / 3);
+    snake.splice(snake.length - cut, cut);
+  } else {
+    score++; grow += 1;
+    if (a.pair) {
+      apples = apples.filter(x => x !== a.pair);
+      snake[0] = { x: a.pair.x, y: a.pair.y };
+    }
+    if (has("walls")) { const w = freeCell(4); if (w) walls.push(w); }
+    if (has("speedup")) tickMs = Math.max(40, tickMs * 0.96);
+    if (has("reverse")) {
+      SFX.play("flip");
+      snake.reverse();
+      const h = snake[0], n = snake[1];
+      dir = n ? { x: Math.sign(h.x - n.x) || 0, y: Math.sign(h.y - n.y) || 0 } : { x: -dir.x, y: -dir.y };
+      if (Math.abs(h.x - n.x) > 1) dir.x = -dir.x;
+      if (Math.abs(h.y - n.y) > 1) dir.y = -dir.y;
+      queue = [];
+    }
+  }
+  $("score").textContent = score;
+  fillApples();
+  if (snake.length >= N * N - walls.length) win();
+}
+function die() {
+  alive = false; state = "over"; deathFlash = 1; SFX.play("die");
+  const best = getBest();
+  if (score > best) { try { localStorage.setItem(bestKey(), score); } catch (e) {} }
+  $("best").textContent = Math.max(best, score);
+  setTimeout(() => {
+    $("title").textContent = "Game over";
+    $("msg").textContent = `You ate ${score} apple${score === 1 ? "" : "s"}.` + (score > best && score > 0 ? " New best!" : "");
+    $("playBtn").textContent = "Play again";
+    paintMenu();
+    $("overlay").classList.add("show");
+  }, 700);
+}
+function win() {
+  state = "over"; SFX.play("win");
+  $("title").textContent = "You win!"; $("msg").textContent = "You filled the whole board.";
+  $("playBtn").textContent = "Play again"; $("overlay").classList.add("show");
+}
+
+/* ---------- Drawing ---------- */
+function draw(t = performance.now()) {
+  const c = cell;
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    ctx.fillStyle = (x + y) % 2 ? "#a2d149" : "#aad751";
+    ctx.fillRect(x * c, y * c, c + 1, c + 1);
+  }
+  walls.forEach(w => {
+    ctx.fillStyle = "#6b6b6b"; ctx.fillRect(w.x * c, w.y * c, c, c);
+    ctx.fillStyle = "#858585"; ctx.fillRect(w.x * c + c * .1, w.y * c + c * .1, c * .8, c * .35);
+    ctx.fillStyle = "#555"; ctx.fillRect(w.x * c, w.y * c + c * .85, c, c * .15);
+  });
+  apples.forEach(a => drawApple(a, t));
+  if (has("portal")) {
+    ctx.strokeStyle = "rgba(80,40,160,.55)"; ctx.lineWidth = c * .08; ctx.setLineDash([c * .2, c * .2]);
+    const seen = new Set();
+    apples.forEach(a => { if (a.pair && !seen.has(a)) { seen.add(a.pair); ctx.beginPath(); ctx.moveTo((a.x + .5) * c, (a.y + .5) * c); ctx.lineTo((a.pair.x + .5) * c, (a.pair.y + .5) * c); ctx.stroke(); } });
+    ctx.setLineDash([]);
+  }
+  drawSnake();
+  if (deathFlash > 0) { ctx.fillStyle = `rgba(255,255,255,${deathFlash * .35})`; ctx.fillRect(0, 0, cv.width, cv.height); deathFlash = Math.max(0, deathFlash - .05); }
+}
+function drawApple(a, t) {
+  const c = cell, cx = (a.x + .5) * c, cy = (a.y + .55) * c;
+  const pop = Math.min(1, (t - a.born) / 180), r = c * .38 * (0.6 + 0.4 * pop);
+  const color = a.kind === "poison" ? "#8e3fd0" : a.kind === "gold" ? "#f5c518" : "#e7471d";
+  ctx.fillStyle = "rgba(0,0,0,.12)"; ctx.beginPath(); ctx.ellipse(cx, cy + r * .9, r * .9, r * .3, 0, 0, 7); ctx.fill();
+  ctx.fillStyle = color; ctx.beginPath(); ctx.arc(cx, cy, r, 0, 7); ctx.fill();
+  ctx.fillStyle = "rgba(255,255,255,.35)"; ctx.beginPath(); ctx.arc(cx - r * .35, cy - r * .35, r * .25, 0, 7); ctx.fill();
+  ctx.strokeStyle = "#5a3a1a"; ctx.lineWidth = c * .07; ctx.beginPath(); ctx.moveTo(cx, cy - r * .8); ctx.lineTo(cx + r * .2, cy - r * 1.3); ctx.stroke();
+  ctx.fillStyle = a.kind === "poison" ? "#3b3b3b" : "#4caf50";
+  ctx.beginPath(); ctx.ellipse(cx + r * .55, cy - r * 1.15, r * .4, r * .2, -.5, 0, 7); ctx.fill();
+  if (a.kind === "poison") { ctx.fillStyle = "#fff"; ctx.font = `bold ${r * 1.1}px Verdana`; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText("☠", cx, cy + r * .05); }
+}
+function drawSnake() {
+  const c = cell, w = c * .8;
+  ctx.lineCap = "round"; ctx.lineJoin = "round";
+  // body as a thick line, split where it wraps around the edge
+  ctx.strokeStyle = alive ? "#4674e9" : "#7a8fbf"; ctx.lineWidth = w;
+  ctx.beginPath();
+  snake.forEach((s, i) => {
+    const px = (s.x + .5) * c, py = (s.y + .5) * c;
+    const prev = snake[i - 1];
+    if (i === 0 || Math.abs(prev.x - s.x) + Math.abs(prev.y - s.y) > 1) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  });
+  if (snake.length === 1) ctx.lineTo((snake[0].x + .5) * c + .1, (snake[0].y + .5) * c);
+  ctx.stroke();
+  ctx.strokeStyle = alive ? "#5a85f0" : "#8a9cc8"; ctx.lineWidth = w * .45;
+  ctx.stroke();
+  // eyes
+  const h = snake[0], hx = (h.x + .5) * c, hy = (h.y + .5) * c;
+  const px = -dir.y, py = dir.x;
+  [-1, 1].forEach(side => {
+    const ex = hx + dir.x * c * .12 + px * side * c * .2, ey = hy + dir.y * c * .12 + py * side * c * .2;
+    ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(ex, ey, c * .15, 0, 7); ctx.fill();
+    ctx.fillStyle = "#000"; ctx.beginPath(); ctx.arc(ex + dir.x * c * .05, ey + dir.y * c * .05, alive ? c * .075 : c * .03, 0, 7); ctx.fill();
+  });
+}
+
+/* ---------- Loop & input ---------- */
+function loop(t) {
+  const dt = Math.min(200, t - (lastT || t)); lastT = t;
+  if (state === "play") {
+    acc += dt;
+    while (acc >= tickMs && state === "play") { acc -= tickMs; step(); }
+  }
+  draw(t);
+  requestAnimationFrame(loop);
+}
+document.addEventListener("keydown", e => {
+  const k = e.key.toLowerCase();
+  const dirs = { arrowup: [0,-1], w: [0,-1], arrowdown: [0,1], s: [0,1], arrowleft: [-1,0], a: [-1,0], arrowright: [1,0], d: [1,0] };
+  if (dirs[k] || k === " ") e.preventDefault();
+  if (k === "r") { newGame(true); return; }
+  if (state === "menu" || state === "over") {
+    if (k === " " || k === "enter") start();
+    else if (dirs[k] && state === "menu") { start(); turn(...dirs[k]); }
+    return;
+  }
+  if (k === "p" || k === "escape") { pause(); return; }
+  if (state === "paused" && (k === " " || dirs[k])) { pause(); }
+  if (dirs[k] && state === "play") turn(...dirs[k]);
+});
+function start() { $("playBtn").blur(); newGame(true); }
+function pause() {
+  if (state === "play") {
+    state = "paused"; $("title").textContent = "Paused"; $("msg").textContent = "Press P or Space to keep going. Changing settings starts a new game.";
+    $("playBtn").textContent = "Resume"; paintMenu(); $("overlay").classList.add("show");
+  } else if (state === "paused") {
+    state = "play"; $("overlay").classList.remove("show");
+  }
+}
+$("playBtn").onclick = () => state === "paused" ? pause() : start();
+$("menuBtn").onclick = () => { if (state === "play") pause(); else { paintMenu(); $("overlay").classList.add("show"); } $("menuBtn").blur(); };
+window.addEventListener("blur", () => { if (state === "play") pause(); });
+addEventListener("resize", () => { const s = state; const px = Math.round(Math.min(cv.clientWidth, 640) * devicePixelRatio); if (px && px !== cv.width) { cv.width = cv.height = px; cell = px / N; } });
+
+/* swipe on touch screens */
+let tStart = null;
+cv.addEventListener("touchstart", e => { tStart = e.touches[0]; }, { passive: true });
+cv.addEventListener("touchend", e => {
+  if (!tStart) return;
+  const t = e.changedTouches[0], dx = t.clientX - tStart.clientX, dy = t.clientY - tStart.clientY;
+  if (Math.max(Math.abs(dx), Math.abs(dy)) < 20) return;
+  if (state !== "play") start();
+  Math.abs(dx) > Math.abs(dy) ? turn(Math.sign(dx), 0) : turn(0, Math.sign(dy));
+});
+
+paintMenu();
+newGame(false);
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>

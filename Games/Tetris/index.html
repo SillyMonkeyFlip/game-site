@@ -57,11 +57,11 @@
   <div class="side">
     <div class="box"><h4>NEXT</h4><canvas id="next" width="100" height="230" style="border:0;background:none"></canvas></div>
     <div class="box keys">
-      <kbd>←</kbd> <kbd>→</kbd> move<br>
-      <kbd>↓</kbd> move down faster<br>
-      <kbd>↑</kbd> hold piece<br>
-      <kbd>A</kbd> <kbd>D</kbd> turn<br>
-      <kbd>W</kbd> <kbd>S</kbd> turn<br>
+      <kbd>A</kbd> <kbd>D</kbd> move<br>
+      <kbd>S</kbd> move down faster<br>
+      <kbd>W</kbd> hold piece<br>
+      <kbd>←</kbd> <kbd>→</kbd> turn<br>
+      <kbd>↑</kbd> <kbd>↓</kbd> turn<br>
       <kbd>Space</kbd> drop instantly<br>
       <kbd>R</kbd> reset<br>
       <kbd>P</kbd> pause<br>
@@ -265,18 +265,18 @@ document.addEventListener("keydown", e => {
   if (k === "p" || k === "escape") { togglePause(); return; }
   if (state !== "play" || e.repeat) return;
   held[k] = true;
-  if (k === "arrowleft") { move(-1); dasDir = -1; dasTimer = 0; arrTimer = 0; }
-  if (k === "arrowright") { move(1); dasDir = 1; dasTimer = 0; arrTimer = 0; }
-  if (k === "arrowdown") { softDrop(); softTimer = 0; dropTimer = 0; }
-  if (k === "arrowup") doHold();
-  if (k === "d" || k === "w") rotate(1);
-  if (k === "a" || k === "s") rotate(-1);
+  if (k === "a") { move(-1); dasDir = -1; dasTimer = 0; arrTimer = 0; }
+  if (k === "d") { move(1); dasDir = 1; dasTimer = 0; arrTimer = 0; }
+  if (k === "s") { softDrop(); softTimer = 0; dropTimer = 0; }
+  if (k === "w") doHold();
+  if (k === "arrowright" || k === "arrowup") rotate(1);
+  if (k === "arrowleft" || k === "arrowdown") rotate(-1);
   if (k === " ") hardDrop();
 });
 document.addEventListener("keyup", e => {
   const k = e.key.toLowerCase(); held[k] = false;
-  if (k === "arrowleft" && dasDir === -1) dasDir = held.arrowright ? 1 : 0;
-  if (k === "arrowright" && dasDir === 1) dasDir = held.arrowleft ? -1 : 0;
+  if (k === "a" && dasDir === -1) dasDir = held.d ? 1 : 0;
+  if (k === "d" && dasDir === 1) dasDir = held.a ? -1 : 0;
 });
 window.addEventListener("blur", () => { for (const k in held) held[k] = false; dasDir = 0; if (state === "play") togglePause(); });
 function togglePause() {
@@ -299,7 +299,7 @@ function loop(now) {
       dasTimer += dt;
       if (dasTimer >= DAS) { arrTimer += dt; while (arrTimer >= ARR) { arrTimer -= ARR; if (!move(dasDir)) break; } }
     }
-    if (held.arrowdown) { softTimer += dt; while (softTimer >= SOFT) { softTimer -= SOFT; softDrop(); } }
+    if (held.s) { softTimer += dt; while (softTimer >= SOFT) { softTimer -= SOFT; softDrop(); } }
     else {
       dropTimer += dt;
       while (dropTimer >= gravity()) { dropTimer -= gravity(); if (fits(piece.m, piece.x, piece.y + 1)) piece.y++; }

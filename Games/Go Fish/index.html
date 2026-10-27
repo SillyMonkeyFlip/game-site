@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Go Fish</title>
+<script src="../sound.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; color: #eee; font-family: Verdana, Tahoma, Arial, sans-serif; overflow: hidden; user-select: none; }
+  body { display: flex; flex-direction: column; background: radial-gradient(ellipse at center, #1d5a7a 0%, #123a52 65%, #0a2233 100%); }
+  header { display: flex; align-items: center; gap: 14px; padding: 8px 64px 8px 14px; background: rgba(0,0,0,.35); flex-wrap: wrap; }
+  header h1 { font-size: 18px; letter-spacing: 1px; }
+  header h1 span { color: #6fd3ff; }
+  header .stat { font-size: 13px; color: #bbb; }
+  header .stat b { color: #fff; }
+  header button { background: #2b2b2b; color: #eee; border: 2px solid #444; padding: 4px 10px; font: 12px Verdana; cursor: pointer; }
+  header button:hover { border-color: #6fd3ff; }
+  #table { flex: 1; display: grid; grid-template-rows: auto 1fr auto; min-height: 0; }
+  #bots { display: flex; justify-content: center; gap: 16px; padding: 12px; flex-wrap: wrap; }
+  .bot { background: rgba(0,0,0,.3); border: 2px solid transparent; padding: 8px 12px; min-width: 160px; text-align: center; transition: border-color .2s, transform .15s; }
+  .bot.turn { border-color: #ffd23f; box-shadow: 0 0 18px rgba(255,210,63,.3); }
+  .bot.pick { cursor: pointer; border-color: #6fd3ff; }
+  .bot.pick:hover { transform: translateY(-3px); background: rgba(111,211,255,.15); }
+  .bot.chosen { border-color: #6fd3ff; background: rgba(111,211,255,.22); }
+  .bot .name { font-weight: bold; font-size: 14px; }
+  .bot .count { font-size: 12px; color: #bbb; margin: 2px 0 6px; }
+  .bot .backs { display: flex; justify-content: center; height: 44px; }
+  .bot .backs .card { width: 30px; height: 44px; margin-left: -20px; }
+  .bot .backs .card:first-child { margin-left: 0; }
+  .books { display: flex; gap: 3px; justify-content: center; flex-wrap: wrap; margin-top: 6px; min-height: 22px; }
+  .book { background: #fff; color: #111; font: bold 12px Georgia, serif; padding: 2px 5px; border-radius: 3px; box-shadow: 2px 2px 0 #bbb, 4px 4px 0 #999; }
+  #mid { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; position: relative; padding: 6px; }
+  #pond { display: flex; align-items: center; gap: 14px; }
+  #pond .label { font-size: 13px; color: #bbb; }
+  #msg { font-size: 16px; text-align: center; min-height: 24px; text-shadow: 0 2px 4px #000; max-width: 640px; }
+  #log { font-size: 12px; color: #9ec7dc; text-align: center; height: 54px; overflow: hidden; line-height: 18px; max-width: 640px; }
+  #you { padding: 6px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+  #youBar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center; }
+  #youBar .name { font-weight: bold; padding: 4px 10px; border: 2px solid transparent; }
+  #youBar .name.turn { border-color: #ffd23f; }
+  .btn { background: #6fd3ff; color: #000; border: 0; padding: 8px 14px; font: bold 13px Verdana; cursor: pointer; }
+  .btn:disabled { opacity: .35; cursor: default; }
+  #hand { display: flex; justify-content: center; max-width: 100%; padding: 14px 10px 4px; overflow-x: auto; }
+  #hand .card { margin-left: -24px; transition: transform .15s; }
+  #hand .card:first-child { margin-left: 0; }
+  #hand.pickable .card { cursor: pointer; }
+  #hand.pickable .card:hover, #hand .card.sel { transform: translateY(-14px); }
+  #hand .card.sel { box-shadow: 0 0 0 3px #6fd3ff, 0 3px 8px rgba(0,0,0,.45); }
+  #hand .card.new { animation: pop .5s; }
+  @keyframes pop { from { transform: translateY(-40px); opacity: 0; } }
+  /* cards */
+  .card { width: 66px; height: 96px; border-radius: 7px; background: #fff; box-shadow: 0 3px 8px rgba(0,0,0,.45); position: relative; flex: 0 0 auto; font-family: Georgia, "Times New Roman", serif; }
+  .card .r { position: absolute; top: 4px; left: 6px; font-size: 17px; font-weight: bold; line-height: 1; text-align: center; }
+  .card .r small { display: block; font-size: 15px; }
+  .card .r.b { top: auto; left: auto; bottom: 4px; right: 6px; transform: rotate(180deg); }
+  .card .mid { position: absolute; inset: 0; display: grid; place-items: center; font-size: 34px; }
+  .red { color: #d62a2a; } .blk { color: #111; }
+  .back { background: #fff; padding: 4px; }
+  .back::after { content: ""; position: absolute; inset: 4px; border-radius: 4px; background: repeating-linear-gradient(45deg, #1d6fa5 0 5px, #2a8ccc 5px 10px); border: 2px solid #fff; outline: 1px solid #1d6fa5; }
+  #deck { position: relative; width: 66px; height: 96px; }
+  #deck .card { position: absolute; }
+  .ov { position: fixed; inset: 0; background: rgba(0,0,0,.65); display: none; place-items: center; z-index: 50; }
+  .ov.show { display: grid; }
+  .ov .box { background: #151515; border: 2px solid #333; padding: 22px; text-align: center; width: min(420px, calc(100vw - 30px)); }
+  .ov h2 { margin-bottom: 8px; }
+  .ov p { color: #aaa; font-size: 13px; margin-bottom: 14px; line-height: 1.5; }
+  .opts { display: flex; gap: 6px; justify-content: center; margin: 10px 0 16px; }
+  .opts button { background: #222; color: #ccc; border: 2px solid #444; padding: 6px 12px; font: 13px Verdana; cursor: pointer; }
+  .opts button.on { border-color: #6fd3ff; color: #fff; }
+  .rules { text-align: left; font-size: 12px; color: #999; line-height: 1.6; margin-bottom: 14px; }
+  .scores { text-align: left; margin: 0 auto 14px; font-size: 14px; line-height: 1.8; display: inline-block; }
+  @media (max-width: 600px) { .card { width: 50px; height: 74px; } .card .mid { font-size: 24px; } .card .r { font-size: 13px; } .card .r small { font-size: 12px; } #hand .card { margin-left: -22px; } .bot { min-width: 100px; padding: 6px; } #deck { width: 50px; height: 74px; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>GO <span>FISH</span></h1>
+  <div class="stat">Wins <b id="wins">0</b> · Losses <b id="losses">0</b></div>
+  <button id="newBtn">New game</button>
+</header>
+<div id="table">
+  <div id="bots"></div>
+  <div id="mid">
+    <div id="pond"><div id="deck"></div><div class="label" id="deckCount"></div></div>
+    <div id="msg"></div>
+    <div id="log"></div>
+  </div>
+  <div id="you">
+    <div id="youBar">
+      <span class="name" id="youName">You</span>
+      <button class="btn" id="askBtn" disabled>Ask</button>
+    </div>
+    <div class="books" id="myBooks"></div>
+    <div id="hand"></div>
+  </div>
+</div>
+<div class="ov show" id="startOv"><div class="box">
+  <h2>Go Fish</h2><p>Collect the most books (all 4 of a rank).</p>
+  <div style="font-size:13px;color:#ccc">Bots</div>
+  <div class="opts" id="botOpts"><button data-n="1">1</button><button data-n="2">2</button><button data-n="3">3</button></div>
+  <div class="rules">• On your turn, click a card in your hand, then click a bot to ask for that rank.<br>• If they have any, they hand them all over and you go again.<br>• If not, "Go fish!": you draw a card. If you fish the rank you asked for, you go again.<br>• 4 of a kind makes a book. Most books when all 13 are made wins.</div>
+  <button class="btn" id="startBtn">Deal</button>
+</div></div>
+<div class="ov" id="endOv"><div class="box"><h2 id="endTitle"></h2><div class="scores" id="endScores"></div><br><button class="btn" id="againBtn">Play again</button></div></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"];
+const SUITS = ["♠", "♥", "♦", "♣"];
+const NAMES = { A: "Aces", J: "Jacks", Q: "Queens", K: "Kings" };
+const plural = r => NAMES[r] || r + "s";
+const BOT_NAMES = ["Bot Barry", "Bot Stella", "Bot Max"];
+let nBots = 2;
+try { nBots = +localStorage.getItem("fish-bots") || 2; } catch (e) {}
+let record = { w: 0, l: 0 };
+try { record = JSON.parse(localStorage.getItem("fish-record")) || record; } catch (e) {}
+
+let deck, players, turn, selRank, selBot, busy, over, gameId = 0, logLines, newCards;
+
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function start() {
+  gameId++; logLines = []; newCards = new Set();
+  deck = shuffle(RANKS.flatMap(r => SUITS.map(s => ({ r, s }))));
+  players = [{ name: "You", human: true, hand: [], books: [] }];
+  for (let i = 0; i < nBots; i++) players.push({ name: BOT_NAMES[i], hand: [], books: [], memory: {} });
+  const n = players.length === 2 ? 7 : 5;
+  players.forEach(p => { for (let i = 0; i < n; i++) p.hand.push(deck.pop()); });
+  players.forEach(checkBooks);
+  turn = 0; selRank = null; selBot = null; busy = false; over = false;
+  SFX.play("level");
+  beginTurn();
+}
+
+function rankCount(p, r) { return p.hand.filter(c => c.r === r).length; }
+function checkBooks(p) {
+  RANKS.forEach(r => {
+    if (rankCount(p, r) === 4) {
+      p.hand = p.hand.filter(c => c.r !== r); p.books.push(r);
+      players.forEach(o => { if (o.memory) for (const k in o.memory) o.memory[k].delete(r); });
+      if (players && players.length) log(who(p) + " made a book of " + plural(r) + "!", true);
+    }
+  });
+  sortHand(p);
+}
+function sortHand(p) { p.hand.sort((a, b) => RANKS.indexOf(a.r) - RANKS.indexOf(b.r) || SUITS.indexOf(a.s) - SUITS.indexOf(b.s)); }
+function who(p) { return p.human ? "You" : p.name; }
+function totalBooks() { return players.reduce((n, p) => n + p.books.length, 0); }
+function log(t, special) {
+  logLines.unshift(t); logLines = logLines.slice(0, 3);
+  $("log").innerHTML = logLines.map((l, i) => `<div style="opacity:${1 - i * .3}">${l}</div>`).join("");
+  if (special) SFX.play("clear");
+}
+function say(t) { $("msg").textContent = t; }
+
+/* the player whose turn it is must have cards; refill from the pond when empty */
+function refill(p) { if (!p.hand.length && deck.length) { p.hand.push(deck.pop()); sortHand(p); if (p.human) newCards = new Set([p.hand[0]]); } }
+
+function beginTurn() {
+  if (totalBooks() === 13 || players.every(p => !p.hand.length) && !deck.length) return finish();
+  const p = players[turn];
+  refill(p);
+  if (!p.hand.length) { log(who(p) + " has no cards left and the pond is empty."); return advance(); }
+  selRank = null; selBot = null;
+  busy = !p.human;
+  render();
+  if (p.human) say("Your turn. Pick a card, then pick who to ask.");
+  else { busy = true; say(p.name + " is thinking..."); const g = gameId; setTimeout(() => { if (g === gameId) botAsk(); }, 1100 + Math.random() * 600); }
+}
+function advance() {
+  let tries = 0;
+  do { turn = (turn + 1) % players.length; tries++; } while (!players[turn].hand.length && !deck.length && tries <= players.length);
+  beginTurn();
+}
+
+/* asker asks target for rank. returns via callback after the result is shown */
+function ask(ai, ti, r) {
+  const a = players[ai], t = players[ti];
+  players.forEach(o => { if (o.memory && o !== a) { (o.memory[ai] = o.memory[ai] || new Set()).add(r); } });
+  const got = t.hand.filter(c => c.r === r);
+  const askLine = `${who(a)} asked ${t.human ? "you" : t.name} for ${plural(r)}.`;
+  if (got.length) {
+    t.hand = t.hand.filter(c => c.r !== r); a.hand.push(...got); sortHand(a);
+    players.forEach(o => { if (o.memory && o.memory[ti]) o.memory[ti].delete(r); });
+    if (a.human) newCards = new Set(got);
+    const line = `${askLine} ${t.human ? "You" : t.name} handed over ${got.length}.`;
+    log(line); say(a.human ? `${t.name} had ${got.length}! Go again.` : (t.human ? `${a.name} took your ${plural(r)}!` : line));
+    SFX.play(a.human ? "point" : "slide");
+    checkBooks(a);
+    render();
+    return again(ai);
+  }
+  // go fish
+  log(askLine + " Go fish!");
+  SFX.play("flip");
+  if (!deck.length) { say(a.human ? "Go fish! But the pond is empty." : `${a.name} has to go fish, but the pond is empty.`); render(); return later(advance); }
+  const c = deck.pop(); a.hand.push(c); sortHand(a);
+  if (a.human) newCards = new Set([c]);
+  const lucky = c.r === r;
+  checkBooks(a);
+  if (a.human) say(lucky ? `Go fish! You fished a ${c.r}${c.s}, the card you wanted. Go again!` : `Go fish! You drew a ${c.r}${c.s}.`);
+  else say(lucky ? `${a.name} fished the card they wanted and goes again.` : `${a.name} went fishing.`);
+  render();
+  if (lucky) { SFX.play("gold"); return again(ai); }
+  later(advance);
+}
+function again(ai) { later(() => { if (totalBooks() === 13) return finish(); turn = ai; beginTurn(); }); }
+function later(f) { busy = true; const g = gameId; setTimeout(() => { if (g === gameId) f(); }, 1300); }
+
+/* ---------- bots ---------- */
+function botAsk() {
+  const ai = turn, a = players[ai];
+  const others = players.map((_, i) => i).filter(i => i !== ai && players[i].hand.length);
+  if (!others.length) { log(a.name + " has nobody to ask."); return later(advance); }
+  const ranks = [...new Set(a.hand.map(c => c.r))];
+  // remembered: someone asked for a rank, so they probably still have it
+  const known = [];
+  others.forEach(i => { (a.memory[i] || new Set()).forEach(r => { if (ranks.includes(r)) known.push([i, r]); }); });
+  let ti, r;
+  if (known.length && Math.random() < 0.85) [ti, r] = known[Math.floor(Math.random() * known.length)];
+  else {
+    ranks.sort((x, y) => rankCount(a, y) - rankCount(a, x) + (Math.random() - .5));
+    r = ranks[0]; ti = others[Math.floor(Math.random() * others.length)];
+  }
+  busy = true;
+  ask(ai, ti, r);
+}
+
+/* ---------- human ---------- */
+function myTurn() { return turn === 0 && !busy && !over; }
+$("askBtn").onclick = () => { if (myTurn() && selRank && selBot !== null) { busy = true; ask(0, selBot, selRank); } };
+
+function cardHTML(c, back) {
+  if (back) return `<div class="card back"></div>`;
+  const red = c.s === "♥" || c.s === "♦";
+  return `<div class="card ${red ? "red" : "blk"}"><div class="r">${c.r}<small>${c.s}</small></div><div class="mid">${c.s}</div><div class="r b">${c.r}<small>${c.s}</small></div></div>`;
+}
+function render() {
+  const mine = myTurn();
+  $("bots").innerHTML = "";
+  players.slice(1).forEach((p, k) => {
+    const i = k + 1, el = document.createElement("div");
+    const can = mine && p.hand.length > 0;
+    el.className = "bot" + (turn === i && !over ? " turn" : "") + (can ? " pick" : "") + (selBot === i && mine ? " chosen" : "");
+    el.innerHTML = `<div class="name">${p.name}</div><div class="count">${p.hand.length} card${p.hand.length === 1 ? "" : "s"} · ${p.books.length} book${p.books.length === 1 ? "" : "s"}</div>
+      <div class="backs">${cardHTML(null, true).repeat(Math.min(p.hand.length, 9))}</div><div class="books">${p.books.map(r => `<span class="book">${r}</span>`).join("")}</div>`;
+    if (can) el.onclick = () => { selBot = i; render(); if (selRank) $("askBtn").focus(); };
+    $("bots").appendChild(el);
+  });
+  $("deck").innerHTML = deck.length ? [0, 1, 2].slice(0, Math.min(3, deck.length)).map(k => cardHTML(null, true).replace('class="card back"', `class="card back" style="left:${k * 2}px;top:${-k * 2}px"`)).join("") : "";
+  $("deckCount").textContent = deck.length ? deck.length + " in the pond" : "Pond is empty";
+  const me = players[0];
+  $("youName").textContent = `You · ${me.books.length} book${me.books.length === 1 ? "" : "s"}`;
+  $("youName").classList.toggle("turn", turn === 0 && !over);
+  $("myBooks").innerHTML = me.books.map(r => `<span class="book">${r}</span>`).join("");
+  $("hand").className = mine ? "pickable" : "";
+  $("hand").innerHTML = "";
+  me.hand.forEach(c => {
+    const w = document.createElement("div"); w.innerHTML = cardHTML(c); const el = w.firstChild;
+    if (selRank === c.r && mine) el.classList.add("sel");
+    if (newCards.has(c)) el.classList.add("new");
+    if (mine) el.onclick = () => { selRank = c.r; render(); };
+    $("hand").appendChild(el);
+  });
+  newCards = new Set();
+  $("askBtn").disabled = !(mine && selRank && selBot !== null);
+  $("askBtn").textContent = mine && selRank ? (selBot !== null ? `Ask ${players[selBot].name} for ${plural(selRank)}` : `Ask for ${plural(selRank)}... pick a bot`) : "Ask";
+}
+
+function finish() {
+  if (over) return;
+  over = true; busy = false;
+  const best = Math.max(...players.map(p => p.books.length));
+  const winners = players.filter(p => p.books.length === best);
+  const won = winners.some(p => p.human);
+  if (won) record.w++; else record.l++;
+  try { localStorage.setItem("fish-record", JSON.stringify(record)); } catch (e) {}
+  SFX.play(won ? "win" : "die");
+  $("endTitle").textContent = won ? (winners.length > 1 ? "You tied for the win!" : "You win! 🎣") : winners.map(p => p.name).join(" & ") + " wins";
+  $("endScores").innerHTML = players.slice().sort((a, b) => b.books.length - a.books.length).map(p => `<div><b>${who(p)}</b>: ${p.books.length} book${p.books.length === 1 ? "" : "s"} ${p.books.join(" ")}</div>`).join("");
+  stats(); render(); say("Game over.");
+  setTimeout(() => $("endOv").classList.add("show"), 800);
+}
+function stats() { $("wins").textContent = record.w; $("losses").textContent = record.l; }
+function paintOpts() { document.querySelectorAll("#botOpts button").forEach(b => { b.classList.toggle("on", +b.dataset.n === nBots); b.onclick = () => { nBots = +b.dataset.n; try { localStorage.setItem("fish-bots", nBots); } catch (e) {} paintOpts(); }; }); }
+$("startBtn").onclick = () => { $("startOv").classList.remove("show"); start(); };
+$("againBtn").onclick = () => { $("endOv").classList.remove("show"); $("startOv").classList.add("show"); };
+$("newBtn").onclick = () => { if (over || confirm("Start a new game?")) { over = true; gameId++; $("endOv").classList.remove("show"); $("startOv").classList.add("show"); } };
+addEventListener("keydown", e => { if (e.key === "Enter" && !$("askBtn").disabled) $("askBtn").click(); });
+paintOpts(); stats();
+deck = []; players = [{ name: "You", human: true, hand: [], books: [] }]; turn = 0; over = true; logLines = []; newCards = new Set(); render();
+</script>
+</body>
+</html>

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CPS Test</title>
+<script src="../sound.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { min-height: 100%; background: #1a1a1a; color: #ddd; font-family: Verdana, Tahoma, Arial, sans-serif; user-select: none; }
+  body { display: flex; flex-direction: column; align-items: center; padding: 60px 16px 30px; }
+  .wrap { width: min(820px, 100%); }
+  h1 { font-size: 20px; letter-spacing: 1px; margin-bottom: 18px; }
+  h1 span { color: #9bd13b; }
+  .bar { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; background: #111; border: 2px solid #2b2b2b; padding: 8px 12px; font-size: 13px; color: #888; margin-bottom: 16px; }
+  .bar .grp { display: flex; gap: 2px; align-items: center; }
+  .bar .sep { width: 2px; height: 18px; background: #2b2b2b; }
+  .bar button { background: none; border: 0; color: #888; font: inherit; padding: 4px 7px; cursor: pointer; }
+  .bar button:hover { color: #ddd; }
+  .bar button.on { color: #9bd13b; font-weight: bold; }
+  .nums { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 16px; }
+  .num { background: #111; border: 2px solid #2b2b2b; padding: 10px 14px; }
+  .num small { color: #777; font-size: 12px; text-transform: uppercase; letter-spacing: 1px; }
+  .num div { font: bold 30px Consolas, "Courier New", monospace; color: #eee; }
+  .num.hi div { color: #9bd13b; }
+  #pad { position: relative; height: 320px; background: #222; border: 2px solid #333; display: grid; place-items: center; cursor: pointer; overflow: hidden; touch-action: manipulation; outline: none; }
+  #pad:hover { border-color: #444; }
+  #pad.go { border-color: #9bd13b; background: #242a1c; }
+  #pad.done { cursor: default; }
+  #padText { font-size: 22px; color: #aaa; text-align: center; pointer-events: none; position: relative; z-index: 1; line-height: 1.6; }
+  #padText b { display: block; font-size: 40px; color: #fff; }
+  .rip { position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; border: 3px solid #9bd13b; border-radius: 50%; pointer-events: none; animation: rp .45s ease-out forwards; }
+  @keyframes rp { to { transform: scale(5); opacity: 0; } }
+  #result { margin-top: 16px; background: #111; border: 2px solid #2b2b2b; padding: 16px; }
+  #result[hidden] { display: none; }
+  #result h2 { font-size: 22px; margin-bottom: 4px; }
+  #result h2 span { color: #9bd13b; }
+  #rank { color: #ffd23f; font-weight: bold; margin-bottom: 12px; }
+  #chart { width: 100%; height: 150px; background: #151515; border: 2px solid #2b2b2b; }
+  .help { margin-top: 16px; font-size: 13px; color: #666; text-align: center; }
+  kbd { background: #2b2b2b; color: #ccc; padding: 2px 6px; font: 12px Consolas, monospace; border-bottom: 2px solid #111; }
+  table { width: 100%; border-collapse: collapse; margin-top: 16px; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid #2b2b2b; }
+  th { color: #777; font-weight: normal; }
+  td b { color: #9bd13b; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>CPS <span>TEST</span></h1>
+  <div class="bar">
+    <div class="grp" id="times"></div>
+    <div class="sep"></div>
+    <div class="grp"><button data-in="mouse">mouse</button><button data-in="space">spacebar</button></div>
+  </div>
+  <div class="nums">
+    <div class="num"><small>Time left</small><div id="nTime">0.0</div></div>
+    <div class="num hi"><small>Clicks / sec</small><div id="nCps">0.00</div></div>
+    <div class="num"><small>Clicks</small><div id="nClicks">0</div></div>
+  </div>
+  <div id="pad" tabindex="0"><div id="padText"></div></div>
+  <div id="result" hidden>
+    <h2><span id="rCps"></span> clicks per second</h2>
+    <div id="rank"></div>
+    <canvas id="chart"></canvas>
+  </div>
+  <table><thead><tr><th>Test</th><th>Your best</th></tr></thead><tbody id="bests"></tbody></table>
+  <p class="help">Pick a time, then click the box as fast as you can. <kbd>R</kbd> resets. In spacebar mode tap <kbd>Space</kbd>.</p>
+</div>
+<script>
+const TIMES = [1, 5, 10, 30, 60];
+const RANKS = [[0, "Sloth 🦥"], [4, "Turtle 🐢"], [6, "Rabbit 🐇"], [8, "Cheetah 🐆"], [10, "Jitter clicker ⚡"], [13, "Butterfly clicker 🦋"], [17, "Auto clicker?? 🤖"]];
+const $ = id => document.getElementById(id);
+let secs = 5, input = "mouse", state = "ready", clicks = [], t0 = 0, raf, lockUntil = 0;
+try { secs = +localStorage.getItem("cps-secs") || 5; input = localStorage.getItem("cps-in") || "mouse"; } catch (e) {}
+
+function bestKey(s, i) { return "cps-best-" + s + (i === "space" ? "-space" : ""); }
+function getBest(s, i) { try { return +localStorage.getItem(bestKey(s, i)) || 0; } catch (e) { return 0; } }
+
+function paint() {
+  $("times").innerHTML = TIMES.map(t => `<button data-t="${t}" class="${t === secs ? "on" : ""}">${t} sec</button>`).join("");
+  $("times").querySelectorAll("button").forEach(b => b.onclick = () => { secs = +b.dataset.t; try { localStorage.setItem("cps-secs", secs); } catch (e) {} reset(); });
+  document.querySelectorAll("[data-in]").forEach(b => { b.classList.toggle("on", b.dataset.in === input); b.onclick = () => { input = b.dataset.in; try { localStorage.setItem("cps-in", input); } catch (e) {} reset(); }; });
+  $("bests").innerHTML = TIMES.map(t => {
+    const m = getBest(t, "mouse"), s = getBest(t, "space");
+    return `<tr><td>${t} second${t > 1 ? "s" : ""}</td><td>${m ? "<b>" + m.toFixed(2) + "</b> cps" : "-"}${s ? " · space <b>" + s.toFixed(2) + "</b>" : ""}</td></tr>`;
+  }).join("");
+}
+function reset() {
+  cancelAnimationFrame(raf);
+  state = "ready"; clicks = [];
+  $("pad").className = ""; $("result").hidden = true;
+  $("padText").innerHTML = input === "mouse" ? "<b>Click here</b>to start the test" : "<b>Press Space</b>to start the test";
+  $("nTime").textContent = secs.toFixed(1); $("nCps").textContent = "0.00"; $("nClicks").textContent = "0";
+  paint();
+}
+function hit(x, y) {
+  const now = performance.now();
+  if (state === "done") return;
+  if (state === "ready") {
+    if (now < lockUntil) return;
+    state = "go"; t0 = now; $("pad").className = "go"; $("padText").innerHTML = "";
+    raf = requestAnimationFrame(loop);
+  }
+  clicks.push(now - t0);
+  $("nClicks").textContent = clicks.length;
+  SFX.tone(600 + Math.min(600, clicks.length * 8), 0.02, "square", 0.04);
+  if (x !== undefined) {
+    const r = document.createElement("div"); r.className = "rip"; r.style.left = x + "px"; r.style.top = y + "px";
+    $("pad").appendChild(r); setTimeout(() => r.remove(), 460);
+  }
+}
+function loop(now) {
+  const el = (now - t0) / 1000;
+  if (el >= secs) return finish();
+  $("nTime").textContent = (secs - el).toFixed(1);
+  $("nCps").textContent = (clicks.length / Math.max(el, 0.1)).toFixed(2);
+  raf = requestAnimationFrame(loop);
+}
+function finish() {
+  state = "done"; lockUntil = performance.now() + 700;    // stop a late click from starting a new test
+  const valid = clicks.filter(c => c <= secs * 1000);
+  const cps = valid.length / secs;
+  $("nTime").textContent = "0.0"; $("nCps").textContent = cps.toFixed(2); $("nClicks").textContent = valid.length;
+  $("pad").className = "done";
+  const prev = getBest(secs, input), nb = cps > prev;
+  if (nb) try { localStorage.setItem(bestKey(secs, input), cps.toFixed(2)); } catch (e) {}
+  SFX.play(nb ? "win" : "point");
+  $("padText").innerHTML = `<b>${cps.toFixed(2)} CPS</b>${nb ? "New best! " : ""}Click or press R to try again`;
+  $("rCps").textContent = cps.toFixed(2);
+  let rank = RANKS[0][1]; RANKS.forEach(([min, n]) => { if (cps >= min) rank = n; });
+  $("rank").textContent = "Rank: " + rank + (nb ? " · new best!" : "") + ` · ${valid.length} clicks in ${secs}s`;
+  $("result").hidden = false;
+  drawChart(valid);
+  paint();
+}
+function drawChart(cl) {
+  const cv = $("chart"), dpr = Math.min(2, devicePixelRatio || 1), w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w * dpr; cv.height = h * dpr;
+  const c = cv.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // clicks in each slice (1s slices, or 0.25s for the 1 second test)
+  const slice = secs === 1 ? 0.25 : secs >= 30 ? 2 : 1, n = Math.round(secs / slice);
+  const bins = Array(n).fill(0); cl.forEach(t => bins[Math.min(n - 1, Math.floor(t / 1000 / slice))]++);
+  const rates = bins.map(b => b / slice), max = Math.max(5, ...rates) * 1.15;
+  const L = 30, B = 20, T = 8, pw = w - L - 8, ph = h - T - B, bw = pw / n;
+  c.font = "11px Verdana"; c.fillStyle = "#666"; c.strokeStyle = "#262626";
+  for (let k = 0; k <= 3; k++) { const v = max / 3 * k, y = T + ph - v / max * ph; c.beginPath(); c.moveTo(L, y); c.lineTo(w - 8, y); c.stroke(); c.textAlign = "right"; c.fillText(Math.round(v), L - 5, y + 4); }
+  rates.forEach((r, i) => {
+    const bh = r / max * ph; c.fillStyle = "#9bd13b"; c.fillRect(L + i * bw + 2, T + ph - bh, Math.max(1, bw - 4), bh);
+  });
+  c.fillStyle = "#666"; c.textAlign = "center";
+  const step = Math.max(1, Math.ceil(n / 12));
+  for (let i = 0; i < n; i += step) c.fillText(((i + 1) * slice) + "s", L + i * bw + bw / 2, h - 5);
+}
+$("pad").addEventListener("pointerdown", e => {
+  if (input !== "mouse") return;
+  if (state === "done") { if (performance.now() > lockUntil) reset(); return; }
+  const r = $("pad").getBoundingClientRect(); hit(e.clientX - r.left, e.clientY - r.top);
+});
+$("pad").addEventListener("contextmenu", e => e.preventDefault());
+addEventListener("keydown", e => {
+  if (e.key === " ") {
+    e.preventDefault();
+    if (input !== "space" || e.repeat) return;
+    if (state === "done") { if (performance.now() > lockUntil) reset(); return; }
+    hit($("pad").clientWidth / 2 + (Math.random() - .5) * 200, $("pad").clientHeight / 2 + (Math.random() - .5) * 120);
+  }
+  if (e.key.toLowerCase() === "r") reset();
+});
+reset();
+</script>
+</body>
+</html>

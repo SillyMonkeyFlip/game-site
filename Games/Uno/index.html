@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Uno</title>
+<script src="../sound.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: #14301f; color: #eee; font-family: Verdana, Tahoma, Arial, sans-serif; overflow: hidden; user-select: none; }
+  body { display: flex; flex-direction: column; background: radial-gradient(ellipse at center, #1f5233 0%, #14301f 70%, #0c1f14 100%); }
+  header { display: flex; align-items: center; gap: 14px; padding: 8px 64px 8px 14px; background: rgba(0,0,0,.35); flex-wrap: wrap; }
+  header h1 { font-size: 18px; letter-spacing: 1px; }
+  header h1 span { color: #ffd23f; }
+  header .stat { font-size: 13px; color: #bbb; }
+  header .stat b { color: #fff; }
+  header button { background: #2b2b2b; color: #eee; border: 2px solid #444; padding: 4px 10px; font: 12px Verdana; cursor: pointer; }
+  header button:hover { border-color: #ffd23f; }
+  #table { flex: 1; display: grid; grid-template-rows: auto 1fr auto; min-height: 0; }
+  #bots { display: flex; justify-content: center; gap: 18px; padding: 12px; flex-wrap: wrap; }
+  .bot { background: rgba(0,0,0,.3); border: 2px solid transparent; padding: 8px 12px; min-width: 150px; text-align: center; transition: border-color .2s; position: relative; }
+  .bot.turn { border-color: #ffd23f; box-shadow: 0 0 18px rgba(255,210,63,.35); }
+  .bot .name { font-weight: bold; font-size: 14px; }
+  .bot .count { font-size: 12px; color: #bbb; margin-top: 2px; }
+  .bot .backs { display: flex; justify-content: center; margin-top: 6px; height: 46px; }
+  .bot .backs .card { width: 30px; height: 46px; margin-left: -18px; font-size: 0; }
+  .bot .backs .card:first-child { margin-left: 0; }
+  .bot .uno { position: absolute; top: -10px; right: -10px; background: #e8423f; color: #fff; font-weight: bold; font-size: 12px; padding: 3px 7px; transform: rotate(8deg); }
+  #mid { display: flex; align-items: center; justify-content: center; gap: 28px; position: relative; }
+  #dir { position: absolute; font-size: 120px; color: rgba(255,255,255,.06); pointer-events: none; transition: transform .4s; }
+  .pile { position: relative; }
+  .pile .label { text-align: center; font-size: 12px; color: #bbb; margin-top: 6px; }
+  #colorDot { width: 26px; height: 26px; border: 3px solid #fff; border-radius: 50%; margin: 0 auto 6px; }
+  #msg { position: absolute; bottom: 6px; left: 0; right: 0; text-align: center; font-size: 15px; min-height: 22px; text-shadow: 0 2px 4px #000; }
+  #you { padding: 6px 12px 12px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+  #youBar { display: flex; gap: 10px; align-items: center; }
+  #youBar .name { font-weight: bold; padding: 4px 10px; border: 2px solid transparent; }
+  #youBar .name.turn { border-color: #ffd23f; }
+  .btn { background: #ffd23f; color: #000; border: 0; padding: 8px 14px; font: bold 13px Verdana; cursor: pointer; }
+  .btn:disabled { opacity: .35; cursor: default; }
+  .btn.red { background: #e8423f; color: #fff; }
+  .btn.alt { background: #2b2b2b; color: #eee; border: 2px solid #444; }
+  #hand { display: flex; justify-content: center; flex-wrap: nowrap; max-width: 100%; padding: 14px 10px 4px; overflow-x: auto; }
+  #hand .card { margin-left: -22px; transition: transform .15s; cursor: default; flex: 0 0 auto; }
+  #hand .card:first-child { margin-left: 0; }
+  #hand .card.ok { cursor: pointer; }
+  #hand .card.ok:hover { transform: translateY(-14px); }
+  #hand .card.no { filter: brightness(.5); }
+  /* cards */
+  .card { width: 70px; height: 105px; border-radius: 9px; background: #fff; padding: 5px; box-shadow: 0 3px 8px rgba(0,0,0,.45); position: relative; flex: 0 0 auto; }
+  .card .in { width: 100%; height: 100%; border-radius: 6px; position: relative; overflow: hidden; display: grid; place-items: center; }
+  .card .oval { position: absolute; width: 120%; height: 62%; background: #fff; border-radius: 50%; transform: rotate(-35deg); }
+  .card .big { position: relative; font: bold 30px Arial Black, Arial, sans-serif; text-shadow: 2px 2px 0 #000; -webkit-text-stroke: 1px #000; }
+  .card .sm { position: absolute; font: bold 12px Arial, sans-serif; color: #fff; text-shadow: 1px 1px 0 #000; }
+  .card .sm.tl { top: 3px; left: 5px; } .card .sm.br { bottom: 3px; right: 5px; transform: rotate(180deg); }
+  .c-red .in { background: #e8423f; } .c-red .big { color: #e8423f; }
+  .c-yellow .in { background: #f5c518; } .c-yellow .big { color: #f5c518; }
+  .c-green .in { background: #2fa84f; } .c-green .big { color: #2fa84f; }
+  .c-blue .in { background: #2f6fd6; } .c-blue .big { color: #2f6fd6; }
+  .c-wild .in { background: #111; }
+  .c-wild .oval { background: conic-gradient(#e8423f 0 25%, #2f6fd6 0 50%, #f5c518 0 75%, #2fa84f 0); }
+  .c-wild .big { color: #fff; font-size: 22px; }
+  .back .in { background: #111; }
+  .back .oval { background: #e8423f; }
+  .back .big { color: #f5c518; font-size: 13px; transform: rotate(-20deg); }
+  .pile .back .big { font-size: 22px; }
+  .bot .backs .big { display: none; }
+  .pile .card { width: 84px; height: 126px; }
+  .pile .card .big { font-size: 38px; }
+  .pile .card.back .big { font-size: 22px; }
+  #drawPile { cursor: pointer; }
+  #drawPile.glow .card { box-shadow: 0 0 0 3px #ffd23f, 0 3px 8px rgba(0,0,0,.45); }
+  /* overlays */
+  .ov { position: fixed; inset: 0; background: rgba(0,0,0,.65); display: none; place-items: center; z-index: 50; }
+  .ov.show { display: grid; }
+  .ov .box { background: #151515; border: 2px solid #333; padding: 22px; text-align: center; width: min(420px, calc(100vw - 30px)); }
+  .ov h2 { margin-bottom: 8px; }
+  .ov p { color: #aaa; font-size: 13px; margin-bottom: 14px; line-height: 1.5; }
+  .colors { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .colors button { height: 70px; border: 3px solid #000; cursor: pointer; font: bold 15px Verdana; color: #fff; text-shadow: 1px 1px 0 #000; }
+  .opts { display: flex; gap: 6px; justify-content: center; margin: 10px 0 16px; flex-wrap: wrap; }
+  .opts button { background: #222; color: #ccc; border: 2px solid #444; padding: 6px 12px; font: 13px Verdana; cursor: pointer; }
+  .opts button.on { border-color: #ffd23f; color: #fff; }
+  .rules { text-align: left; font-size: 12px; color: #999; line-height: 1.6; margin-bottom: 14px; }
+  @media (max-width: 600px) {
+    .card { width: 54px; height: 82px; padding: 4px; } .card .big { font-size: 22px; }
+    #hand .card { margin-left: -20px; }
+    .pile .card { width: 66px; height: 99px; } .pile .card .big { font-size: 28px; }
+    .bot { min-width: 100px; padding: 6px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>U<span>NO</span></h1>
+  <div class="stat">Wins <b id="wins">0</b> · Losses <b id="losses">0</b></div>
+  <button id="newBtn">New game</button>
+</header>
+<div id="table">
+  <div id="bots"></div>
+  <div id="mid">
+    <div id="dir">⟳</div>
+    <div class="pile" id="drawPile"><div class="card back"><div class="in"><div class="oval"></div><div class="big">UNO</div></div></div><div class="label" id="deckCount">Draw</div></div>
+    <div class="pile"><div id="discard"></div><div class="label"><div id="colorDot"></div></div></div>
+    <div id="msg"></div>
+  </div>
+  <div id="you">
+    <div id="youBar">
+      <span class="name" id="youName">You</span>
+      <button class="btn alt" id="passBtn" disabled>Keep it</button>
+      <button class="btn red" id="unoBtn" disabled>UNO!</button>
+    </div>
+    <div id="hand"></div>
+  </div>
+</div>
+
+<div class="ov" id="colorOv"><div class="box"><h2>Pick a color</h2><p>The wild card's color</p>
+  <div class="colors">
+    <button data-c="red" style="background:#e8423f">Red</button><button data-c="yellow" style="background:#f5c518">Yellow</button>
+    <button data-c="green" style="background:#2fa84f">Green</button><button data-c="blue" style="background:#2f6fd6">Blue</button>
+  </div></div></div>
+<div class="ov show" id="startOv"><div class="box">
+  <h2>Uno</h2><p>Get rid of all your cards first.</p>
+  <div style="font-size:13px;color:#ccc">Bots</div>
+  <div class="opts" id="botOpts"><button data-n="1">1</button><button data-n="2">2</button><button data-n="3">3</button></div>
+  <div class="rules">• Match the top card's color, number or symbol.<br>• Can't play? Click the draw pile. If the new card fits you can play it or keep it.<br>• Press <b>UNO!</b> when you're down to one card, or the bots catch you and you draw 2.<br>• Skip, Reverse, +2, Wild and Wild +4 work like the real game.</div>
+  <button class="btn" id="startBtn">Deal</button>
+</div></div>
+<div class="ov" id="endOv"><div class="box"><h2 id="endTitle"></h2><p id="endText"></p><button class="btn" id="againBtn">Play again</button></div></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const COLORS = ["red", "yellow", "green", "blue"];
+const BOT_NAMES = ["Bot Barry", "Bot Stella", "Bot Max"];
+const SYM = { skip: "⊘", reverse: "⇄", draw2: "+2", wild: "W", wild4: "+4" };
+let nBots = 2;
+try { nBots = +localStorage.getItem("uno-bots") || 2; } catch (e) {}
+let record = { w: 0, l: 0 };
+try { record = JSON.parse(localStorage.getItem("uno-record")) || record; } catch (e) {}
+
+let deck, discard, players, turn, dir, color, busy, drawnCard, saidUno, unoTimer, over, gameId = 0;
+
+function makeDeck() {
+  const d = [];
+  COLORS.forEach(c => {
+    d.push({ c, v: "0" });
+    for (let i = 1; i <= 9; i++) d.push({ c, v: String(i) }, { c, v: String(i) });
+    ["skip", "reverse", "draw2"].forEach(v => d.push({ c, v }, { c, v }));
+  });
+  for (let i = 0; i < 4; i++) d.push({ c: "wild", v: "wild" }, { c: "wild", v: "wild4" });
+  return shuffle(d);
+}
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function topCard() { return discard[discard.length - 1]; }
+function draw(p, n) {
+  const got = [];
+  for (let i = 0; i < n; i++) {
+    if (!deck.length) {                                   // reshuffle the discard pile into the deck
+      const t = discard.pop(); deck = shuffle(discard.map(c => c.c === "wild" || c.wasWild ? { c: "wild", v: c.v } : c)); discard = [t];
+      if (!deck.length) break;
+    }
+    const c = deck.pop(); p.hand.push(c); got.push(c);
+  }
+  if (p.human) sortHand(p);
+  return got;
+}
+function sortHand(p) {
+  const order = { red: 0, yellow: 1, green: 2, blue: 3, wild: 4 };
+  const val = v => isNaN(v) ? { skip: 10, reverse: 11, draw2: 12, wild: 13, wild4: 14 }[v] : +v;
+  p.hand.sort((a, b) => order[a.c] - order[b.c] || val(a.v) - val(b.v));
+}
+function canPlay(c) { const t = topCard(); return c.c === "wild" || c.c === color || c.v === t.v; }
+
+function start() {
+  gameId++;
+  deck = makeDeck(); discard = []; dir = 1; busy = false; over = false; drawnCard = null; saidUno = false;
+  players = [{ name: "You", human: true, hand: [] }];
+  for (let i = 0; i < nBots; i++) players.push({ name: BOT_NAMES[i], hand: [] });
+  players.forEach(p => draw(p, 7));
+  let first; do { first = deck.pop(); if (first.c === "wild") { deck.unshift(first); first = null; } } while (!first);
+  discard.push(first); color = first.c;
+  turn = 0;
+  SFX.play("level");
+  // a first card that's an action card affects the first player, like the real rules
+  if (first.v === "skip") { say("First card is a Skip. You're skipped!"); nextTurn(1); }
+  else if (first.v === "reverse") { dir = -1; say("First card is a Reverse."); if (players.length === 2) nextTurn(1); else { turn = 0; render(); } }
+  else if (first.v === "draw2") { draw(players[0], 2); say("First card is +2. You draw 2 and lose your turn."); nextTurn(1); }
+  else { say("Your turn. Match the color or number."); render(); }
+}
+
+function cardHTML(c, back) {
+  if (back) return `<div class="card back"><div class="in"><div class="oval"></div><div class="big">UNO</div></div></div>`;
+  const s = SYM[c.v] || c.v, cls = c.c === "wild" ? "wild" : c.c;
+  return `<div class="card c-${cls}"><div class="in"><div class="oval"></div><div class="big">${s}</div><span class="sm tl">${s}</span><span class="sm br">${s}</span></div></div>`;
+}
+function render() {
+  $("bots").innerHTML = players.slice(1).map((p, i) => {
+    const n = p.hand.length, shown = Math.min(n, 10);
+    return `<div class="bot ${turn === i + 1 && !over ? "turn" : ""}">${n === 1 ? '<div class="uno">UNO!</div>' : ""}<div class="name">${p.name}</div><div class="count">${n} card${n === 1 ? "" : "s"}</div><div class="backs">${cardHTML(null, true).repeat(shown)}</div></div>`;
+  }).join("");
+  const t = topCard();
+  $("discard").innerHTML = cardHTML(t.wasWild ? { c: "wild", v: t.v } : t);
+  $("colorDot").style.background = { red: "#e8423f", yellow: "#f5c518", green: "#2fa84f", blue: "#2f6fd6" }[color];
+  $("deckCount").textContent = "Draw (" + deck.length + ")";
+  $("dir").style.transform = dir === 1 ? "scaleX(1)" : "scaleX(-1)";
+  const me = players[0], myTurn = turn === 0 && !busy && !over;
+  $("youName").classList.toggle("turn", turn === 0 && !over);
+  $("youName").textContent = "You · " + me.hand.length;
+  $("hand").innerHTML = "";
+  me.hand.forEach((c, i) => {
+    const wrap = document.createElement("div"); wrap.innerHTML = cardHTML(c);
+    const el = wrap.firstChild;
+    const ok = myTurn && canPlay(c) && (!drawnCard || c === drawnCard);
+    el.classList.add(myTurn ? (ok ? "ok" : "no") : "x");
+    if (ok) el.onclick = () => humanPlay(i);
+    $("hand").appendChild(el);
+  });
+  $("drawPile").classList.toggle("glow", myTurn && !drawnCard && !me.hand.some(canPlay));
+  $("passBtn").disabled = !(myTurn && drawnCard);
+  $("unoBtn").disabled = over || saidUno || !(me.hand.length === 2 && turn === 0 && me.hand.some(canPlay) || me.hand.length === 1 && unoTimer);
+}
+function say(t) { $("msg").textContent = t; }
+
+/* ---------- human ---------- */
+function humanPlay(i) {
+  if (turn !== 0 || busy || over) return;
+  const me = players[0], c = me.hand[i];
+  if (!canPlay(c)) return;
+  me.hand.splice(i, 1); drawnCard = null;
+  if (c.c === "wild") { busy = true; render(); pickColor(col => { busy = false; afterPlay(0, c, col); }); return; }
+  afterPlay(0, c);
+}
+function pickColor(cb) {
+  $("colorOv").classList.add("show");
+  $("colorOv").querySelectorAll("button").forEach(b => b.onclick = () => { $("colorOv").classList.remove("show"); cb(b.dataset.c); });
+}
+$("drawPile").onclick = () => {
+  if (turn !== 0 || busy || over || drawnCard) return;
+  const me = players[0];
+  const [c] = draw(me, 1);
+  SFX.play("move");
+  if (c && canPlay(c)) { drawnCard = c; say("You drew a card that fits. Play it or keep it."); render(); }
+  else { say("You drew a card."); render(); nextTurn(); }
+};
+$("passBtn").onclick = () => { if (!drawnCard) return; drawnCard = null; say("You kept it."); nextTurn(); };
+$("unoBtn").onclick = () => { saidUno = true; SFX.play("gold"); say("You called UNO!"); clearTimeout(unoTimer); unoTimer = null; render(); };
+
+/* ---------- playing a card ---------- */
+function afterPlay(pi, c, chosen) {
+  const p = players[pi];
+  if (c.c === "wild") { c = { ...c, c: chosen, wasWild: true }; }
+  discard.push(c); color = c.c;
+  SFX.play(c.v === "wild4" || c.v === "draw2" ? "drop" : "rotate");
+  const who = p.human ? "You" : p.name;
+  let note = who + " played " + describe(c) + (c.wasWild ? " and picked " + chosen : "") + ".";
+  if (!p.hand.length) { say(note); render(); return finish(pi); }
+
+  // UNO check for the human: forgot to press it with one card left -> bots may catch it
+  if (p.human) {
+    if (p.hand.length === 1 && !saidUno) {
+      unoTimer = setTimeout(() => {
+        unoTimer = null;
+        if (!saidUno && players[0].hand.length === 1 && !over) { draw(players[0], 2); SFX.play("hit"); say("A bot caught you not saying UNO! Draw 2."); render(); }
+      }, 1800);
+    }
+    if (p.hand.length !== 1) saidUno = false;
+  } else if (p.hand.length === 1) note += " " + p.name + ": UNO!";
+
+  let skip = 0;
+  if (c.v === "skip") skip = 1;
+  if (c.v === "reverse") { if (players.length === 2) skip = 1; else dir *= -1; }
+  if (c.v === "draw2" || c.v === "wild4") {
+    const victim = players[idx(1)];
+    draw(victim, c.v === "draw2" ? 2 : 4); skip = 1;
+    note += " " + (victim.human ? "You draw " : victim.name + " draws ") + (c.v === "draw2" ? 2 : 4) + ".";
+  }
+  say(note);
+  nextTurn(1 + skip);
+}
+function describe(c) {
+  const v = { skip: "Skip", reverse: "Reverse", draw2: "+2", wild: "Wild", wild4: "Wild +4" }[c.v] || c.v;
+  return c.wasWild ? "a " + v : "a " + c.c + " " + v;
+}
+function idx(step) { return ((turn + dir * step) % players.length + players.length) % players.length; }
+function nextTurn(step = 1) {
+  turn = idx(step); drawnCard = null;
+  if (turn === 0) saidUno = players[0].hand.length === 1 ? saidUno : false;
+  render();
+  if (!players[turn].human && !over) { busy = true; const g = gameId; setTimeout(() => { if (g === gameId) botTurn(); }, 900 + Math.random() * 500); }
+  else busy = false;
+}
+
+/* ---------- bots ---------- */
+function botTurn() {
+  if (over) return;
+  busy = false;
+  const p = players[turn];
+  let options = p.hand.filter(canPlay);
+  if (!options.length) {
+    const [c] = draw(p, 1);
+    SFX.play("move");
+    if (c && canPlay(c)) options = [c];
+    else { say(p.name + " drew a card."); render(); return nextTurn(); }
+  }
+  const nextPlayer = players[idx(1)];
+  const score = c => {
+    let s = 0;
+    if (c.c === "wild") s -= 20;                               // save wilds for later
+    if (c.v === "wild4") s -= 10;
+    if (["skip", "reverse", "draw2"].includes(c.v)) s += nextPlayer.hand.length <= 2 ? 30 : 5;
+    if (c.v === "wild4" && nextPlayer.hand.length <= 2) s += 60;
+    s += p.hand.filter(h => h.c === c.c).length * 2;          // keep playing the color it has most of
+    if (!isNaN(c.v)) s += +c.v * 0.3;                          // dump high numbers
+    return s + Math.random() * 3;
+  };
+  options.sort((a, b) => score(b) - score(a));
+  const c = options[0];
+  p.hand.splice(p.hand.indexOf(c), 1);
+  let chosen;
+  if (c.c === "wild") {
+    const counts = {}; COLORS.forEach(k => counts[k] = 0);
+    p.hand.forEach(h => { if (h.c !== "wild") counts[h.c]++; });
+    chosen = COLORS.slice().sort((a, b) => counts[b] - counts[a] || Math.random() - .5)[0];
+  }
+  afterPlay(turn, c, chosen);
+}
+
+function finish(pi) {
+  over = true; clearTimeout(unoTimer);
+  const won = pi === 0;
+  if (won) record.w++; else record.l++;
+  try { localStorage.setItem("uno-record", JSON.stringify(record)); } catch (e) {}
+  SFX.play(won ? "win" : "die");
+  $("endTitle").textContent = won ? "You win! 🎉" : players[pi].name + " wins";
+  $("endText").textContent = won ? "You got rid of all your cards." : "Cards left: " + players.map(p => p.name + " " + p.hand.length).join(" · ");
+  stats(); render();
+  setTimeout(() => $("endOv").classList.add("show"), 700);
+}
+function stats() { $("wins").textContent = record.w; $("losses").textContent = record.l; }
+
+function paintOpts() { document.querySelectorAll("#botOpts button").forEach(b => { b.classList.toggle("on", +b.dataset.n === nBots); b.onclick = () => { nBots = +b.dataset.n; try { localStorage.setItem("uno-bots", nBots); } catch (e) {} paintOpts(); }; }); }
+$("startBtn").onclick = () => { $("startOv").classList.remove("show"); start(); };
+$("againBtn").onclick = () => { $("endOv").classList.remove("show"); $("startOv").classList.add("show"); };
+$("newBtn").onclick = () => { if (over || confirm("Start a new game?")) { over = true; clearTimeout(unoTimer); $("endOv").classList.remove("show"); $("startOv").classList.add("show"); } };
+paintOpts(); stats();
+// draw an empty table behind the start screen
+deck = makeDeck(); discard = [deck.find(c => c.c !== "wild")]; color = discard[0].c; players = [{ name: "You", human: true, hand: [] }]; turn = 0; dir = 1; over = true; render();
+</script>
+</body>
+</html>

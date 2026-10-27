@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Live HTML Viewer</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: #161616; color: #ddd; font-family: Verdana, Tahoma, Arial, sans-serif; overflow: hidden; }
+  body { display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 10px; padding: 8px 12px; background: #0e0e0e; border-bottom: 2px solid #2b2b2b; flex-wrap: wrap; }
+  header h1 { font-size: 16px; letter-spacing: 1px; margin-right: 8px; white-space: nowrap; }
+  header h1 span { color: #9bd13b; }
+  .tb { background: #222; color: #ccc; border: 2px solid #333; padding: 5px 10px; font: 12px Verdana, sans-serif; cursor: pointer; white-space: nowrap; }
+  .tb:hover { border-color: #9bd13b; color: #fff; }
+  .tb.on { border-color: #9bd13b; color: #9bd13b; }
+  select.tb { padding: 4px 6px; }
+  .grow { flex: 1; }
+  label.chk { font-size: 12px; color: #999; display: flex; gap: 5px; align-items: center; cursor: pointer; white-space: nowrap; }
+  main { flex: 1; display: flex; min-height: 0; }
+  main.stack { flex-direction: column; }
+  .pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+  #left { flex: 1; }
+  #right { flex: 1; background: #fff; }
+  #split { flex: 0 0 6px; background: #2b2b2b; cursor: col-resize; }
+  main.stack #split { cursor: row-resize; }
+  #split:hover, #split.drag { background: #9bd13b; }
+  .tabs { display: flex; background: #111; border-bottom: 2px solid #2b2b2b; }
+  .tab { background: none; border: 0; border-right: 2px solid #222; color: #888; padding: 7px 16px; font: bold 12px Verdana, sans-serif; cursor: pointer; }
+  .tab.on { color: #fff; background: #1d1d1d; box-shadow: inset 0 -3px 0 #9bd13b; }
+  .tab[data-l="html"].on { box-shadow: inset 0 -3px 0 #e8743f; }
+  .tab[data-l="css"].on { box-shadow: inset 0 -3px 0 #3fa7e8; }
+  .tab[data-l="js"].on { box-shadow: inset 0 -3px 0 #f0d23a; }
+  .ed { position: relative; flex: 1; display: flex; min-height: 0; background: #1d1d1d; }
+  .gutter { flex: 0 0 auto; padding: 10px 8px 10px 10px; text-align: right; color: #555; background: #191919; border-right: 1px solid #2b2b2b; overflow: hidden; user-select: none; }
+  .code { position: relative; flex: 1; min-width: 0; }
+  .code pre, .code textarea { position: absolute; inset: 0; padding: 10px 12px; margin: 0; border: 0; white-space: pre; overflow: auto; tab-size: 2; }
+  .gutter, .code pre, .code textarea { font: 14px/20px Consolas, "Courier New", monospace; }
+  .code pre { color: #ddd; pointer-events: none; }
+  .code textarea { background: transparent; color: transparent; caret-color: #9bd13b; resize: none; outline: none; }
+  .code textarea::selection { background: rgba(155,209,59,.3); color: transparent; }
+  .k-tag { color: #e8743f; } .k-attr { color: #f0d23a; } .k-str { color: #9bd13b; } .k-com { color: #666; font-style: italic; }
+  .k-key { color: #c792ea; } .k-num { color: #f78c6c; } .k-prop { color: #3fa7e8; } .k-sel { color: #e8743f; } .k-fn { color: #82aaff; }
+  iframe { flex: 1; border: 0; width: 100%; background: #fff; }
+  #console { flex: 0 0 auto; max-height: 34%; background: #111; border-top: 2px solid #2b2b2b; display: flex; flex-direction: column; color: #ccc; }
+  #console.min #logs { display: none; }
+  .ch { display: flex; align-items: center; gap: 8px; padding: 4px 10px; font-size: 12px; color: #888; cursor: pointer; user-select: none; }
+  .ch b { color: #ccc; }
+  .ch .count { background: #e8423f; color: #fff; padding: 0 6px; font-size: 11px; }
+  .ch .count:empty { display: none; }
+  .ch button { margin-left: auto; background: none; border: 0; color: #888; font: 12px Verdana; cursor: pointer; }
+  #logs { overflow: auto; font: 12px/18px Consolas, monospace; }
+  .log { padding: 2px 10px; border-bottom: 1px solid #1d1d1d; white-space: pre-wrap; word-break: break-word; }
+  .log.error { color: #ff6b6b; background: #2a1414; } .log.warn { color: #f0d23a; background: #2a2614; } .log.info { color: #82aaff; }
+  #toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: #9bd13b; color: #000; padding: 8px 14px; font-size: 13px; font-weight: bold; opacity: 0; transition: opacity .3s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+  @media (max-width: 700px) { main { flex-direction: column; } #split { cursor: row-resize; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>LIVE <span>HTML</span></h1>
+  <select class="tb" id="examples" title="Load an example">
+    <option value="">Examples...</option>
+  </select>
+  <button class="tb" id="run" title="Run now (Ctrl+Enter)">▶ Run</button>
+  <label class="chk"><input type="checkbox" id="auto" checked> Auto-run</label>
+  <div class="grow"></div>
+  <button class="tb" id="layout" title="Side by side or stacked">⇅ Layout</button>
+  <button class="tb" id="newtab" title="Open the result in a new tab">↗ New tab</button>
+  <button class="tb" id="download" title="Save as one .html file">⬇ Download</button>
+  <button class="tb" id="clear" title="Start from a blank page">✕ Clear</button>
+</header>
+<main id="main">
+  <section class="pane" id="left">
+    <div class="tabs">
+      <button class="tab on" data-l="html">HTML</button>
+      <button class="tab" data-l="css">CSS</button>
+      <button class="tab" data-l="js">JS</button>
+    </div>
+    <div class="ed">
+      <div class="gutter" id="gutter">1</div>
+      <div class="code"><pre id="hl" aria-hidden="true"></pre><textarea id="src" spellcheck="false" autocomplete="off" autocapitalize="off" wrap="off" aria-label="Code editor"></textarea></div>
+    </div>
+  </section>
+  <div id="split"></div>
+  <section class="pane" id="right">
+    <iframe id="out" title="Preview" sandbox="allow-scripts allow-modals allow-forms allow-popups"></iframe>
+    <div id="console" class="min">
+      <div class="ch" id="ch"><b>Console</b><span class="count" id="errCount"></span><span id="logCount"></span><button id="clearLogs">clear</button></div>
+      <div id="logs"></div>
+    </div>
+  </section>
+</main>
+<div id="toast"></div>
+<script>
+const $ = id => document.getElementById(id);
+const EXAMPLES = {
+  "Starter page": {
+    html: `<h1>Hello, world!</h1>\n<p>Edit the code on the left and watch this update live.</p>\n<button id="btn">Click me</button>\n<p id="out"></p>`,
+    css: `body {\n  font-family: Verdana, sans-serif;\n  background: #f4f4f4;\n  padding: 30px;\n}\n\nh1 {\n  color: #4c9a3a;\n}\n\nbutton {\n  padding: 10px 18px;\n  font-size: 16px;\n  cursor: pointer;\n}`,
+    js: `let clicks = 0;\ndocument.getElementById("btn").onclick = () => {\n  clicks++;\n  document.getElementById("out").textContent = "Clicked " + clicks + " times";\n  console.log("click", clicks);\n};`
+  },
+  "Bouncing ball": {
+    html: `<canvas id="c" width="400" height="300"></canvas>`,
+    css: `body { margin: 0; display: grid; place-items: center; height: 100vh; background: #222; }\ncanvas { background: #111; border: 2px solid #9bd13b; }`,
+    js: `const c = document.getElementById("c"), ctx = c.getContext("2d");\nlet x = 50, y = 50, vx = 3, vy = 2;\n\nfunction draw() {\n  ctx.clearRect(0, 0, c.width, c.height);\n  ctx.fillStyle = "#9bd13b";\n  ctx.beginPath();\n  ctx.arc(x, y, 15, 0, Math.PI * 2);\n  ctx.fill();\n  x += vx; y += vy;\n  if (x < 15 || x > c.width - 15) vx *= -1;\n  if (y < 15 || y > c.height - 15) vy *= -1;\n  requestAnimationFrame(draw);\n}\ndraw();`
+  },
+  "Card with hover": {
+    html: `<div class="card">\n  <h2>Cool card</h2>\n  <p>Hover over me!</p>\n</div>`,
+    css: `body { display: grid; place-items: center; height: 100vh; margin: 0; background: linear-gradient(135deg, #667eea, #764ba2); font-family: sans-serif; }\n.card {\n  background: white;\n  padding: 30px 40px;\n  border-radius: 12px;\n  box-shadow: 0 10px 30px rgba(0,0,0,.25);\n  transition: transform .2s;\n}\n.card:hover { transform: scale(1.08) rotate(-2deg); }`,
+    js: ``
+  },
+  "To-do list": {
+    html: `<h2>To-do</h2>\n<input id="item" placeholder="Add something...">\n<button id="add">Add</button>\n<ul id="list"></ul>`,
+    css: `body { font-family: sans-serif; padding: 20px; }\nli { cursor: pointer; padding: 4px 0; }\nli.done { text-decoration: line-through; color: #999; }`,
+    js: `const list = document.getElementById("list"), item = document.getElementById("item");\nfunction add() {\n  if (!item.value.trim()) return;\n  const li = document.createElement("li");\n  li.textContent = item.value;\n  li.onclick = () => li.classList.toggle("done");\n  list.appendChild(li);\n  item.value = "";\n}\ndocument.getElementById("add").onclick = add;\nitem.onkeydown = e => { if (e.key === "Enter") add(); };`
+  }
+};
+let code = { html: "", css: "", js: "" }, lang = "html", stacked = false, auto = true;
+try {
+  const s = JSON.parse(localStorage.getItem("htmlview-code") || "null");
+  if (s) code = s; else code = { ...EXAMPLES["Starter page"] };
+  stacked = localStorage.getItem("htmlview-stack") === "1";
+  auto = localStorage.getItem("htmlview-auto") !== "0";
+} catch (e) { code = { ...EXAMPLES["Starter page"] }; }
+
+/* ---------- syntax colors (simple, good enough to read) ---------- */
+const esc = s => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+const span = (c, s) => `<span class="k-${c}">${esc(s)}</span>`;
+function hlJS(s) {
+  const re = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|("(?:\\.|[^"\\\n])*"?|'(?:\\.|[^'\\\n])*'?|`(?:\\.|[^`\\])*`?)|\b(const|let|var|function|return|if|else|for|while|do|break|continue|new|class|extends|import|export|from|of|in|typeof|instanceof|this|true|false|null|undefined|async|await|try|catch|finally|throw|switch|case|default)\b|\b(\d+(?:\.\d+)?)\b|([A-Za-z_$][\w$]*)(?=\s*\()/g;
+  let out = "", last = 0, m;
+  while ((m = re.exec(s))) {
+    out += esc(s.slice(last, m.index));
+    out += m[1] ? span("com", m[1]) : m[2] ? span("str", m[2]) : m[3] ? span("key", m[3]) : m[4] ? span("num", m[4]) : span("fn", m[5]);
+    last = re.lastIndex;
+  }
+  return out + esc(s.slice(last));
+}
+function hlCSS(s) {
+  const re = /(\/\*[\s\S]*?(?:\*\/|$))|("[^"\n]*"?|'[^'\n]*'?)|([\w-]+)(?=\s*:[^{};]*[;}\n])|(#[0-9a-fA-F]{3,8}\b|-?\d*\.?\d+(?:px|em|rem|%|vh|vw|s|ms|deg|fr)?\b)|([^{}\n;]+)(?=\{)/g;
+  let out = "", last = 0, m;
+  while ((m = re.exec(s))) {
+    out += esc(s.slice(last, m.index));
+    out += m[1] ? span("com", m[1]) : m[2] ? span("str", m[2]) : m[3] ? span("prop", m[3]) : m[4] ? span("num", m[4]) : span("sel", m[5]);
+    last = re.lastIndex;
+  }
+  return out + esc(s.slice(last));
+}
+function hlHTML(s) {
+  const re = /(<!--[\s\S]*?(?:-->|$))|(<\/?)([\w-]+)([^>]*)(>?)/g;
+  let out = "", last = 0, m;
+  while ((m = re.exec(s))) {
+    out += esc(s.slice(last, m.index));
+    if (m[1]) out += span("com", m[1]);
+    else {
+      const attrs = m[4].replace(/([\w:-]+)(=)?("[^"]*"?|'[^']*'?|[^\s>]*)?/g, (a, n, eq, v) => "\u0001" + n + "\u0002" + (eq ? "=" + (v ? "\u0003" + v + "\u0004" : "") : ""));
+      const a2 = esc(attrs).replace(/\u0001(.*?)\u0002/g, '<span class="k-attr">$1</span>').replace(/\u0003(.*?)\u0004/g, '<span class="k-str">$1</span>');
+      out += span("tag", m[2] + m[3]) + a2 + (m[5] ? span("tag", m[5]) : "");
+    }
+    last = re.lastIndex;
+  }
+  return out + esc(s.slice(last));
+}
+const HL = { html: hlHTML, css: hlCSS, js: hlJS };
+
+const src = $("src"), hl = $("hl"), gutter = $("gutter");
+function paintEditor() {
+  const v = src.value;
+  hl.innerHTML = HL[lang](v) + "\n";        // trailing newline keeps the last line's height
+  const lines = v.split("\n").length;
+  gutter.textContent = Array.from({ length: lines }, (_, i) => i + 1).join("\n");
+  syncScroll();
+}
+function syncScroll() { hl.scrollTop = src.scrollTop; hl.scrollLeft = src.scrollLeft; gutter.scrollTop = src.scrollTop; }
+src.addEventListener("scroll", syncScroll);
+function showTab(l) {
+  code[lang] = src.value; lang = l;
+  document.querySelectorAll(".tab").forEach(t => t.classList.toggle("on", t.dataset.l === l));
+  src.value = code[l]; src.scrollTop = 0; paintEditor(); src.focus();
+}
+document.querySelectorAll(".tab").forEach(t => t.onclick = () => showTab(t.dataset.l));
+
+/* ---------- editing helpers ---------- */
+function insert(text, selStart, selEnd) {
+  src.setRangeText(text, selStart, selEnd, "end");
+  src.dispatchEvent(new Event("input"));
+}
+const PAIRS = { "(": ")", "[": "]", "{": "}", '"': '"', "'": "'", "`": "`" };
+src.addEventListener("keydown", e => {
+  const s = src.selectionStart, en = src.selectionEnd, v = src.value;
+  if ((e.ctrlKey || e.metaKey) && e.key === "Enter") { e.preventDefault(); run(); return; }
+  if (e.key === "Tab") {
+    e.preventDefault();
+    if (s === en && !e.shiftKey) return insert("  ", s, en);
+    // indent / outdent every selected line
+    const ls = v.lastIndexOf("\n", s - 1) + 1, block = v.slice(ls, en);
+    const changed = e.shiftKey ? block.replace(/^ {1,2}/gm, "") : block.replace(/^/gm, "  ");
+    src.setRangeText(changed, ls, en, "select"); src.dispatchEvent(new Event("input")); return;
+  }
+  if (e.key === "Enter") {
+    e.preventDefault();
+    const ls = v.lastIndexOf("\n", s - 1) + 1, indent = v.slice(ls).match(/^ */)[0];
+    const before = v[s - 1], after = v[s];
+    if ((before === "{" && after === "}") || (before === "(" && after === ")") || (before === ">" && after === "<" && v[s + 1] === "/")) {
+      insert("\n" + indent + "  \n" + indent, s, en); src.selectionStart = src.selectionEnd = s + indent.length + 3; return;
+    }
+    return insert("\n" + indent + (before === "{" ? "  " : ""), s, en);
+  }
+  if (PAIRS[e.key] && s === en && !/\w/.test(v[s] || "")) {
+    if ((e.key === '"' || e.key === "'" || e.key === "`") && v[s] === e.key) { e.preventDefault(); src.selectionStart = src.selectionEnd = s + 1; return; }
+    e.preventDefault(); insert(e.key + PAIRS[e.key], s, en); src.selectionStart = src.selectionEnd = s + 1; return;
+  }
+  if ([")", "]", "}"].includes(e.key) && v[s] === e.key && s === en) { e.preventDefault(); src.selectionStart = src.selectionEnd = s + 1; return; }
+  if (e.key === ">" && lang === "html" && s === en) {
+    // auto close tags: typing > after <div adds </div>
+    const m = v.slice(0, s).match(/<([a-zA-Z][\w-]*)(?:\s[^<>]*)?$/);
+    const VOID = ["br", "img", "input", "hr", "meta", "link", "area", "base", "col", "embed", "source", "track", "wbr"];
+    if (m && !VOID.includes(m[1].toLowerCase()) && v[s - 1] !== "/") { e.preventDefault(); insert("></" + m[1] + ">", s, en); src.selectionStart = src.selectionEnd = s + 1; return; }
+  }
+  if (e.key === "Backspace" && s === en && PAIRS[v[s - 1]] === v[s] && v[s]) { e.preventDefault(); insert("", s - 1, s + 1); }
+});
+
+/* ---------- running ---------- */
+const BRIDGE = `<script>(function(){
+  function fmt(a){try{if(a instanceof Error)return a.name+": "+a.message;if(typeof a==="object"&&a!==null)return JSON.stringify(a,null,1);return String(a);}catch(e){return String(a);}}
+  ["log","info","warn","error"].forEach(function(t){var o=console[t];console[t]=function(){parent.postMessage({hv:1,type:t,msg:[].map.call(arguments,fmt).join(" ")},"*");o.apply(console,arguments);};});
+  addEventListener("error",function(e){parent.postMessage({hv:1,type:"error",msg:e.message+(e.lineno?" (line "+e.lineno+")":"")},"*");});
+  addEventListener("unhandledrejection",function(e){parent.postMessage({hv:1,type:"error",msg:"Unhandled promise: "+fmt(e.reason)},"*");});
+})();<\/script>`;
+function buildDoc(withBridge = true) {
+  const h = code.html, hasDoc = /<html[\s>]/i.test(h);
+  const css = code.css.trim() ? `<style>\n${code.css}\n</style>` : "";
+  const js = code.js.trim() ? `<script>\n${code.js.replace(/<\/script/gi, "<\\/script")}\n<\/script>` : "";
+  if (hasDoc) {
+    let d = h;
+    d = /<\/head>/i.test(d) ? d.replace(/<\/head>/i, (withBridge ? BRIDGE : "") + css + "</head>") : (withBridge ? BRIDGE : "") + css + d;
+    d = /<\/body>/i.test(d) ? d.replace(/<\/body>(?![\s\S]*<\/body>)/i, js + "</body>") : d + js;
+    return d;
+  }
+  return `<!DOCTYPE html>\n<html>\n<head>\n<meta charset="utf-8">\n<title>My page</title>\n${withBridge ? BRIDGE + "\n" : ""}${css}\n</head>\n<body>\n${h}\n${js}\n</body>\n</html>`;
+}
+let runTimer, errs = 0, logsN = 0;
+function run() {
+  code[lang] = src.value;
+  clearLogs();
+  $("out").srcdoc = buildDoc();
+  save();
+}
+function save() { try { localStorage.setItem("htmlview-code", JSON.stringify(code)); } catch (e) {} }
+src.addEventListener("input", () => {
+  code[lang] = src.value; paintEditor(); save();
+  if (auto) { clearTimeout(runTimer); runTimer = setTimeout(run, 400); }
+});
+$("run").onclick = run;
+$("auto").checked = auto;
+$("auto").onchange = () => { auto = $("auto").checked; try { localStorage.setItem("htmlview-auto", auto ? "1" : "0"); } catch (e) {} if (auto) run(); };
+
+addEventListener("message", e => {
+  if (e.source !== $("out").contentWindow || !e.data || !e.data.hv) return;
+  const d = document.createElement("div"); d.className = "log " + e.data.type; d.textContent = e.data.msg;
+  $("logs").appendChild(d); $("logs").scrollTop = 1e9;
+  logsN++; if (e.data.type === "error") { errs++; $("console").classList.remove("min"); }
+  $("errCount").textContent = errs ? errs + (errs > 1 ? " errors" : " error") : "";
+  $("logCount").textContent = logsN + " message" + (logsN === 1 ? "" : "s");
+});
+function clearLogs() { $("logs").innerHTML = ""; errs = 0; logsN = 0; $("errCount").textContent = ""; $("logCount").textContent = ""; }
+$("ch").onclick = e => { if (e.target.id !== "clearLogs") $("console").classList.toggle("min"); };
+$("clearLogs").onclick = clearLogs;
+
+/* ---------- toolbar ---------- */
+function toast(t) { const el = $("toast"); el.textContent = t; el.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove("show"), 1600); }
+Object.keys(EXAMPLES).forEach(n => { const o = document.createElement("option"); o.textContent = n; $("examples").appendChild(o); });
+$("examples").onchange = () => {
+  const n = $("examples").value; $("examples").value = "";
+  if (!n) return;
+  if (!confirm("Load \"" + n + "\"? This replaces your current code.")) return;
+  code = { ...EXAMPLES[n] }; src.value = code[lang]; paintEditor(); run(); toast("Loaded " + n);
+};
+$("clear").onclick = () => {
+  if (!confirm("Clear all the code (HTML, CSS and JS)?")) return;
+  code = { html: "", css: "", js: "" }; src.value = ""; paintEditor(); run(); src.focus();
+};
+$("download").onclick = () => {
+  code[lang] = src.value;
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([buildDoc(false)], { type: "text/html" }));
+  a.download = "my-page.html"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  toast("Saved my-page.html");
+};
+$("newtab").onclick = () => {
+  code[lang] = src.value;
+  const w = window.open(URL.createObjectURL(new Blob([buildDoc(false)], { type: "text/html" })), "_blank");
+  if (!w) toast("Your browser blocked the new tab");
+};
+function applyLayout() { $("main").classList.toggle("stack", stacked); $("left").style.flex = $("right").style.flex = ""; }
+$("layout").onclick = () => { stacked = !stacked; try { localStorage.setItem("htmlview-stack", stacked ? "1" : "0"); } catch (e) {} applyLayout(); };
+
+/* drag the divider to resize */
+$("split").addEventListener("pointerdown", e => {
+  e.preventDefault(); $("split").classList.add("drag"); $("split").setPointerCapture(e.pointerId);
+  $("out").style.pointerEvents = "none";
+  const vertical = stacked || innerWidth <= 700, r = $("main").getBoundingClientRect();
+  const move = ev => {
+    const f = vertical ? (ev.clientY - r.top) / r.height : (ev.clientX - r.left) / r.width;
+    const k = Math.min(.85, Math.max(.15, f));
+    $("left").style.flex = k + " 1 0"; $("right").style.flex = (1 - k) + " 1 0";
+  };
+  const up = () => { $("split").classList.remove("drag"); $("out").style.pointerEvents = ""; $("split").removeEventListener("pointermove", move); $("split").removeEventListener("pointerup", up); };
+  $("split").addEventListener("pointermove", move); $("split").addEventListener("pointerup", up);
+});
+
+applyLayout();
+src.value = code.html; paintEditor(); run();
+</script>
+</body>
+</html>

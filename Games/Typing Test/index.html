@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Typing Test</title>
+<script src="../sound.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { min-height: 100%; background: #1a1a1a; color: #ddd; font-family: Verdana, Tahoma, Arial, sans-serif; }
+  body { display: flex; flex-direction: column; align-items: center; padding: 60px 16px 30px; }
+  .wrap { width: min(900px, 100%); }
+  h1 { font-size: 20px; letter-spacing: 1px; margin-bottom: 18px; }
+  h1 span { color: #9bd13b; }
+  .bar { display: flex; flex-wrap: wrap; gap: 6px 14px; align-items: center; background: #111; border: 2px solid #2b2b2b; padding: 8px 12px; font-size: 13px; color: #888; margin-bottom: 30px; }
+  .bar .grp { display: flex; gap: 2px; align-items: center; }
+  .bar .sep { width: 2px; height: 18px; background: #2b2b2b; }
+  .bar button { background: none; border: 0; color: #888; font: inherit; padding: 4px 7px; cursor: pointer; }
+  .bar button:hover { color: #ddd; }
+  .bar button.on { color: #9bd13b; font-weight: bold; }
+  .live { display: flex; gap: 24px; font-size: 28px; color: #9bd13b; font-weight: bold; height: 38px; margin-bottom: 8px; font-family: Consolas, "Courier New", monospace; }
+  .live small { font-size: 13px; color: #777; font-weight: normal; margin-left: 4px; }
+  #box { position: relative; font-family: Consolas, "Courier New", monospace; font-size: 26px; line-height: 44px; height: 132px; overflow: hidden; cursor: text; outline: none; }
+  #words { position: relative; display: flex; flex-wrap: wrap; transition: transform .12s; }
+  .w { margin-right: 15px; white-space: nowrap; position: relative; }
+  .w.bad { text-decoration: underline 2px #e8423f; text-underline-offset: 7px; }
+  .c { color: #5a5a5a; }
+  .c.ok { color: #eee; }
+  .c.no { color: #e8423f; }
+  .c.extra { color: #8a2a28; }
+  #caret { position: absolute; width: 3px; height: 32px; background: #9bd13b; top: 6px; left: 0; transition: left .08s, top .08s; }
+  #caret.blink { animation: bl 1s step-end infinite; }
+  @keyframes bl { 50% { opacity: 0; } }
+  #focusMsg { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(26,26,26,.75); backdrop-filter: blur(3px); font-family: Verdana, sans-serif; font-size: 16px; color: #ccc; }
+  #focusMsg[hidden] { display: none; }
+  #hidden { position: absolute; opacity: 0; left: -9999px; width: 10px; }
+  .help { margin-top: 26px; font-size: 13px; color: #666; text-align: center; }
+  kbd { background: #2b2b2b; color: #ccc; padding: 2px 6px; font: 12px Consolas, monospace; border-bottom: 2px solid #111; }
+  #result[hidden], #test[hidden] { display: none; }
+  .res { display: grid; grid-template-columns: 200px 1fr; gap: 20px; align-items: start; }
+  .big small { display: block; color: #777; font-size: 14px; }
+  .big div { font-size: 56px; color: #9bd13b; font-weight: bold; font-family: Consolas, monospace; line-height: 1.05; margin-bottom: 10px; }
+  #chart { width: 100%; height: 200px; background: #151515; border: 2px solid #2b2b2b; }
+  .mini { display: flex; flex-wrap: wrap; gap: 10px 28px; margin-top: 18px; }
+  .mini small { display: block; color: #777; font-size: 12px; }
+  .mini b { font-size: 22px; font-family: Consolas, monospace; color: #ddd; }
+  .newbest { color: #ffd23f; font-weight: bold; margin-bottom: 10px; }
+  .btns { margin-top: 24px; display: flex; gap: 10px; justify-content: center; }
+  .btn { background: #9bd13b; color: #000; border: 0; padding: 10px 18px; font: inherit; font-weight: bold; cursor: pointer; }
+  .btn.alt { background: #2b2b2b; color: #eee; }
+  @media (max-width: 640px) { #box { font-size: 20px; line-height: 36px; height: 108px; } #caret { height: 26px; top: 5px; } .res { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>TYPING <span>TEST</span></h1>
+  <div class="bar" id="bar">
+    <div class="grp"><button data-opt="punct">@ punctuation</button><button data-opt="nums"># numbers</button></div>
+    <div class="sep"></div>
+    <div class="grp"><button data-mode="time">time</button><button data-mode="words">words</button></div>
+    <div class="sep"></div>
+    <div class="grp" id="amounts"></div>
+  </div>
+  <div id="test">
+    <div class="live"><div id="lProg"></div><div id="lWpm"></div></div>
+    <div id="box" tabindex="0">
+      <div id="words"></div>
+      <div id="caret" class="blink"></div>
+      <div id="focusMsg" hidden>Click here or press any key to focus</div>
+    </div>
+    <input id="hidden" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false">
+  </div>
+  <div id="result" hidden>
+    <div class="newbest" id="rBest" hidden>New best for this test!</div>
+    <div class="res">
+      <div class="big"><small>wpm</small><div id="rWpm"></div><small>accuracy</small><div id="rAcc"></div></div>
+      <canvas id="chart"></canvas>
+    </div>
+    <div class="mini" id="rMini"></div>
+  </div>
+  <div class="btns"><button class="btn" id="restart">Restart</button></div>
+  <p class="help"><kbd>Tab</kbd> or <kbd>Esc</kbd> restart · the timer starts when you type</p>
+</div>
+<script>
+const WORDS = ("the be of and a to in he have it that for they with as not on she at by this we you do but from or which one would all will there say who make when can more if no man out other so what time up go about than into could state only new year some take come these know see use get like then first any work now may such give over think most even find day also after way many must look before great back through long where much should well people down own just because good each those feel seem how high too place little world very still nation hand old life tell write become here show house both between need mean call develop under last right move thing general school never same another begin while number part turn real leave might want point form off child few small since against ask late home interest large person end open public follow during present without again hold govern around possible head consider word program problem however lead system set order eye plan run keep face fact group play stand increase early course change help line city put close case force meet once water upon war build hear light unite live every country bring center let side try provide continue name certain power pay result question study woman member until far night always service away report something company week church toward start social room figure nature though young less enough almost read include president nothing yet better big boy cost business value second why clear expect family complete act sense mind experience art next near direct car law industry important girl god several matter usual rather per often kind among white reason action return foot care simple within love human along appear doctor believe speak active student month drive concern best door hope example inform body ever least probable understand reach effect different idea whole control condition field pass fall note special talk particular today measure walk teach low hour type carry rate remain full street easy although record sit determine level local sure receive thus moment spirit train college religion perhaps music grow free cause serve age book board recent sound office cut step class true history position above strong friend necessary add court deal tax support party whether either land material happen education death agree arm mother across quite anything town past view society manage answer break organize half fire lose money stop actual already effort wait department able political learn voice air together shall cover common subject draw short wife treat limit road letter color behind produce send term total university rise century success minute remember purpose test fight watch situation south ago difference stage father table rest bear entire market prepare explain offer plant charge ground west picture hard front lie modern dark surface rule regard dance peace observe future wrong").split(" ");
+const PUNCT = [",", ".", "?", "!", ";", ":"];
+const $ = id => document.getElementById(id);
+const AMOUNTS = { time: [15, 30, 60, 120], words: [10, 25, 50, 100] };
+let cfg = { mode: "time", amount: 30, punct: false, nums: false };
+try { Object.assign(cfg, JSON.parse(localStorage.getItem("type-cfg") || "{}")); } catch (e) {}
+
+let words, wi, typed, started, startT, ended, timer, samples, keyStats, wordEls;
+
+function makeWord(prevEnd) {
+  let w = WORDS[Math.floor(Math.random() * WORDS.length)];
+  if (cfg.nums && Math.random() < 0.12) w = String(Math.floor(Math.random() * (Math.random() < .5 ? 100 : 10000)));
+  if (cfg.punct) {
+    if (prevEnd && /[.?!]$/.test(prevEnd)) w = w[0].toUpperCase() + w.slice(1);
+    const r = Math.random();
+    if (r < 0.12) w += PUNCT[Math.floor(Math.random() * PUNCT.length)];
+    else if (r < 0.15) w = "\"" + w + "\"";
+    else if (r < 0.17) w = "(" + w + ")";
+  }
+  return w;
+}
+function genWords(n) {
+  const out = [];
+  for (let i = 0; i < n; i++) out.push(makeWord(out[i - 1] || (cfg.punct ? "." : "")));
+  return out;
+}
+
+function saveCfg() { try { localStorage.setItem("type-cfg", JSON.stringify(cfg)); } catch (e) {} }
+function paintBar() {
+  document.querySelectorAll("[data-opt]").forEach(b => b.classList.toggle("on", cfg[b.dataset.opt]));
+  document.querySelectorAll("[data-mode]").forEach(b => b.classList.toggle("on", cfg.mode === b.dataset.mode));
+  $("amounts").innerHTML = AMOUNTS[cfg.mode].map(a => `<button data-amt="${a}" class="${a === cfg.amount ? "on" : ""}">${a}</button>`).join("");
+  $("amounts").querySelectorAll("button").forEach(b => b.onclick = () => { cfg.amount = +b.dataset.amt; saveCfg(); reset(); });
+}
+document.querySelectorAll("[data-opt]").forEach(b => b.onclick = () => { cfg[b.dataset.opt] = !cfg[b.dataset.opt]; saveCfg(); reset(); });
+document.querySelectorAll("[data-mode]").forEach(b => b.onclick = () => {
+  if (cfg.mode === b.dataset.mode) return;
+  cfg.mode = b.dataset.mode; cfg.amount = AMOUNTS[cfg.mode][1]; saveCfg(); reset();
+});
+
+function reset() {
+  clearInterval(timer);
+  if (!AMOUNTS[cfg.mode].includes(cfg.amount)) cfg.amount = AMOUNTS[cfg.mode][1];
+  paintBar();
+  words = genWords(cfg.mode === "words" ? cfg.amount : 120);
+  wi = 0; typed = [""]; started = false; ended = false; samples = []; keyStats = { correct: 0, wrong: 0, extra: 0, missed: 0, keys: 0, errors: 0 };
+  $("words").style.transform = "translateY(0)";
+  render();
+  $("test").hidden = false; $("result").hidden = true;
+  $("lWpm").innerHTML = ""; progress();
+  $("hidden").value = "";
+  focusInput();
+}
+
+function render() {
+  const box = $("words"); box.innerHTML = ""; wordEls = [];
+  words.forEach((w, i) => {
+    const el = document.createElement("span"); el.className = "w";
+    wordEls.push(el); box.appendChild(el); paintWord(i);
+  });
+  placeCaret();
+}
+function paintWord(i) {
+  const w = words[i], t = typed[i] || "", el = wordEls[i];
+  let h = "";
+  for (let j = 0; j < Math.max(w.length, t.length); j++) {
+    if (j >= w.length) h += `<span class="c extra">${esc(t[j])}</span>`;
+    else if (j >= t.length) h += `<span class="c">${esc(w[j])}</span>`;
+    else h += `<span class="c ${t[j] === w[j] ? "ok" : "no"}">${esc(w[j])}</span>`;
+  }
+  el.innerHTML = h;
+  el.classList.toggle("bad", i < wi && t !== w);
+}
+function esc(c) { return c === "<" ? "&lt;" : c === "&" ? "&amp;" : c === ">" ? "&gt;" : c; }
+
+function placeCaret() {
+  const el = wordEls[wi]; if (!el) return;
+  const chars = el.children, n = (typed[wi] || "").length;
+  const x = el.offsetLeft + (n < chars.length ? chars[n].offsetLeft : chars[chars.length - 1].offsetLeft + chars[chars.length - 1].offsetWidth);
+  // scroll so the current word stays on the 2nd line
+  const lh = parseFloat(getComputedStyle($("box")).lineHeight);
+  const shift = Math.max(0, el.offsetTop - lh);
+  $("words").style.transform = `translateY(${-shift}px)`;
+  const caret = $("caret");
+  caret.style.left = (x - 1) + "px";
+  caret.style.top = (el.offsetTop - shift + (lh - caret.offsetHeight) / 2) + "px";
+}
+
+function focusInput() { $("hidden").focus(); $("focusMsg").hidden = true; }
+$("box").addEventListener("mousedown", e => { e.preventDefault(); focusInput(); });
+$("hidden").addEventListener("blur", () => { setTimeout(() => { if (document.activeElement !== $("hidden") && !$("test").hidden) $("focusMsg").hidden = false; }, 50); });
+
+function startTest() {
+  started = true; startT = performance.now();
+  $("caret").classList.remove("blink");
+  timer = setInterval(tick, 1000 / 4);
+}
+function tick() {
+  if (ended) return;
+  const el = (performance.now() - startT) / 1000;
+  const sec = Math.floor(el);
+  if (sec > samples.length) samples.push({ wpm: liveWpm(el), raw: rawWpm(el), err: keyStats.errors });
+  if (cfg.mode === "time" && el >= cfg.amount) return finish();
+  progress(el);
+  $("lWpm").innerHTML = el > 1 ? Math.round(liveWpm(el)) + "<small>wpm</small>" : "";
+}
+function progress(el = 0) {
+  $("lProg").textContent = cfg.mode === "time" ? Math.max(0, Math.ceil(cfg.amount - el)) : wi + "/" + cfg.amount;
+}
+function correctChars(includeCurrent) {
+  let n = 0;
+  for (let i = 0; i < wi; i++) if (typed[i] === words[i]) n += words[i].length + 1;
+  if (includeCurrent) { const t = typed[wi] || "", w = words[wi]; if (t === w) n += w.length; }
+  return n;
+}
+function liveWpm(el) { return correctChars(true) / 5 / (el / 60); }
+function rawWpm(el) { return keyStats.keys / 5 / (el / 60); }
+
+$("hidden").addEventListener("keydown", e => {
+  if (e.key === "Tab" || e.key === "Escape") { e.preventDefault(); reset(); return; }
+  if (ended) return;
+  if (e.ctrlKey && e.key === "Backspace") { e.preventDefault(); if (typed[wi]) { typed[wi] = ""; paintWord(wi); placeCaret(); } else back(); return; }
+  if (e.key === "Backspace") { e.preventDefault(); if (typed[wi]) { typed[wi] = typed[wi].slice(0, -1); paintWord(wi); placeCaret(); } else back(); return; }
+  if (e.key === " ") { e.preventDefault(); space(); return; }
+  if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) { e.preventDefault(); type(e.key); }
+});
+// phones: some keyboards don't send real key events, so also read the input
+$("hidden").addEventListener("input", e => {
+  const v = $("hidden").value; $("hidden").value = "";
+  for (const ch of v) { if (ch === " ") space(); else type(ch); }
+});
+function back() {
+  if (wi === 0 || typed[wi - 1] === words[wi - 1]) return;   // can't go back into a correct word
+  wi--; paintWord(wi); placeCaret(); progress();
+}
+function type(ch) {
+  if (!started) startTest();
+  const t = typed[wi] || "", w = words[wi];
+  if (t.length >= w.length + 10) return;
+  keyStats.keys++;
+  if (ch !== w[t.length]) { keyStats.errors++; SFX.tone(160, 0.04, "square", 0.04); }
+  else SFX.tone(1200 + Math.random() * 300, 0.012, "square", 0.02);
+  typed[wi] = t + ch; paintWord(wi); placeCaret();
+  if (cfg.mode === "words" && wi === words.length - 1 && typed[wi] === words[wi]) finish();
+}
+function space() {
+  if (!started || !(typed[wi] || "").length) return;
+  keyStats.keys++;
+  if (typed[wi] !== words[wi]) keyStats.errors++;
+  wi++; typed[wi] = "";
+  paintWord(wi - 1);
+  if (cfg.mode === "words" && wi >= words.length) return finish();
+  if (cfg.mode === "time" && wi > words.length - 40) {         // keep adding words for long tests
+    const more = genWords(60); words.push(...more);
+    more.forEach((_, k) => { const el = document.createElement("span"); el.className = "w"; wordEls.push(el); $("words").appendChild(el); paintWord(words.length - 60 + k); });
+  }
+  placeCaret(); progress((performance.now() - startT) / 1000);
+}
+
+function finish() {
+  if (ended) return;
+  ended = true; clearInterval(timer);
+  const el = cfg.mode === "time" ? cfg.amount : (performance.now() - startT) / 1000;
+  const doneWords = cfg.mode === "words" ? words.length : wi;
+  let correct = 0, incorrect = 0, extra = 0, missed = 0;
+  for (let i = 0; i <= Math.min(wi, words.length - 1); i++) {
+    const t = typed[i] || "", w = words[i];
+    if (i === wi && cfg.mode === "time" && t.length === 0) break;
+    for (let j = 0; j < Math.max(t.length, w.length); j++) {
+      if (j >= w.length) extra++;
+      else if (j >= t.length) { if (i < wi) missed++; }
+      else if (t[j] === w[j]) correct++; else incorrect++;
+    }
+  }
+  const wpm = Math.round(liveWpm(el)), raw = Math.round(rawWpm(el));
+  const acc = keyStats.keys ? Math.max(0, Math.round((keyStats.keys - keyStats.errors) / keyStats.keys * 100)) : 0;
+  if (samples.length < Math.floor(el)) samples.push({ wpm: liveWpm(el), raw: rawWpm(el), err: keyStats.errors });
+  const key = "type-best-" + cfg.mode + cfg.amount + (cfg.punct ? "p" : "") + (cfg.nums ? "n" : "");
+  let best = 0; try { best = +localStorage.getItem(key) || 0; } catch (e) {}
+  const nb = wpm > best && wpm > 0;
+  if (nb) { best = wpm; try { localStorage.setItem(key, wpm); } catch (e) {} }
+  SFX.play(nb ? "win" : "point");
+  $("rWpm").textContent = wpm; $("rAcc").textContent = acc + "%";
+  $("rBest").hidden = !nb;
+  const items = [
+    ["test", cfg.mode + " " + cfg.amount + (cfg.punct ? " @" : "") + (cfg.nums ? " #" : "")],
+    ["raw", raw], ["characters", `${correct}/${incorrect}/${extra}/${missed}`],
+    ["time", Math.round(el) + "s"], ["words", doneWords], ["best", best + " wpm"]
+  ];
+  $("rMini").innerHTML = items.map(([l, v]) => `<div><small>${l}</small><b>${v}</b></div>`).join("");
+  $("rMini").children[2].title = "correct / incorrect / extra / missed";
+  $("test").hidden = true; $("result").hidden = false;
+  drawChart();
+  $("hidden").focus();
+}
+
+function drawChart() {
+  const cv = $("chart"), dpr = Math.min(2, devicePixelRatio || 1);
+  const w = cv.clientWidth, h = cv.clientHeight;
+  cv.width = w * dpr; cv.height = h * dpr;
+  const c = cv.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const pts = samples.length ? samples : [{ wpm: 0, raw: 0, err: 0 }];
+  const max = Math.max(10, ...pts.map(p => Math.max(p.wpm, p.raw))) * 1.15;
+  const L = 34, R = 10, T = 12, B = 22, pw = w - L - R, ph = h - T - B;
+  const X = i => L + (pts.length === 1 ? pw / 2 : i / (pts.length - 1) * pw), Y = v => T + ph - v / max * ph;
+  c.font = "11px Verdana"; c.fillStyle = "#666"; c.strokeStyle = "#262626"; c.lineWidth = 1;
+  for (let k = 0; k <= 4; k++) { const v = max / 4 * k, y = Y(v); c.beginPath(); c.moveTo(L, y); c.lineTo(w - R, y); c.stroke(); c.textAlign = "right"; c.fillText(Math.round(v), L - 6, y + 4); }
+  c.textAlign = "center";
+  const step = Math.max(1, Math.ceil(pts.length / 10));
+  pts.forEach((_, i) => { if (i % step === 0 || i === pts.length - 1) c.fillText(i + 1, X(i), h - 6); });
+  const line = (key, col, wdt) => { c.strokeStyle = col; c.lineWidth = wdt; c.beginPath(); pts.forEach((p, i) => i ? c.lineTo(X(i), Y(p[key])) : c.moveTo(X(i), Y(p[key]))); c.stroke(); };
+  line("raw", "#555", 2); line("wpm", "#9bd13b", 3);
+  // red marks on seconds with new errors
+  c.fillStyle = "#e8423f";
+  pts.forEach((p, i) => { const prev = i ? pts[i - 1].err : 0; if (p.err > prev) { c.font = "bold 12px Verdana"; c.fillText("×", X(i), T + 10); } });
+}
+
+$("restart").onclick = () => reset();
+addEventListener("keydown", e => {
+  if (e.target === $("hidden")) return;
+  if (e.key === "Tab" || e.key === "Escape") { e.preventDefault(); reset(); return; }
+  if (!$("test").hidden && e.key.length === 1 && !e.ctrlKey && !e.metaKey) focusInput();
+});
+addEventListener("resize", () => { if (!$("test").hidden) placeCaret(); else drawChart(); });
+reset();
+</script>
+</body>
+</html>

@@ -111,7 +111,7 @@
     setMuted(muted);
   }
   addEventListener("keydown", e => {
-    if (e.key.toLowerCase() === "m" && !e.ctrlKey && !e.metaKey && e.target.tagName !== "INPUT") setMuted(!muted);
+    if (e.key.toLowerCase() === "m" && !e.ctrlKey && !e.metaKey && !/^(INPUT|TEXTAREA)$/.test(e.target.tagName) && !e.target.isContentEditable && !window.SFX_NO_M_KEY) setMuted(!muted);
   });
   if (document.body) ui(); else addEventListener("DOMContentLoaded", ui);
 

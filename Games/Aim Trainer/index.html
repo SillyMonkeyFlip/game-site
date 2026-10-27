@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aim Trainer</title>
+<script src="../sound.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; background: #161616; color: #eee; font-family: Verdana, Tahoma, Arial, sans-serif; overflow: hidden; user-select: none; }
+  body { display: flex; flex-direction: column; }
+  header { display: flex; align-items: center; gap: 18px; padding: 10px 64px 10px 16px; background: #0e0e0e; border-bottom: 2px solid #2b2b2b; flex-wrap: wrap; }
+  header h1 { font-size: 18px; letter-spacing: 1px; }
+  header h1 span { color: #9bd13b; }
+  .hud { display: flex; gap: 18px; font-size: 14px; color: #aaa; }
+  .hud b { color: #fff; font-size: 16px; }
+  #arena { position: relative; flex: 1; cursor: crosshair; touch-action: none; overflow: hidden;
+    background: #1d1d1d; background-image: linear-gradient(#262626 1px, transparent 1px), linear-gradient(90deg, #262626 1px, transparent 1px); background-size: 40px 40px; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .panel { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(10,10,10,.82); }
+  .panel[hidden] { display: none; }
+  .box { background: #111; border: 2px solid #333; padding: 24px; width: min(560px, calc(100% - 32px)); max-height: calc(100% - 32px); overflow: auto; }
+  .box h2 { font-size: 24px; margin-bottom: 4px; }
+  .box p.sub { color: #999; font-size: 13px; margin-bottom: 18px; }
+  .modes { display: grid; gap: 10px; }
+  .mode { text-align: left; background: #1b1b1b; border: 2px solid #333; color: #eee; padding: 12px 14px; cursor: pointer; font: inherit; display: flex; justify-content: space-between; gap: 10px; align-items: center; }
+  .mode:hover, .mode:focus-visible { border-color: #9bd13b; outline: none; }
+  .mode b { display: block; font-size: 16px; }
+  .mode small { color: #999; font-size: 12px; }
+  .mode .best { color: #9bd13b; font-size: 12px; white-space: nowrap; }
+  .row { display: flex; align-items: center; gap: 8px; margin-top: 16px; font-size: 13px; color: #aaa; flex-wrap: wrap; }
+  .seg button { background: #1b1b1b; color: #ccc; border: 2px solid #333; padding: 5px 12px; font: inherit; cursor: pointer; margin-right: -2px; }
+  .seg button.on { border-color: #9bd13b; color: #fff; position: relative; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin: 16px 0; }
+  .stat { background: #1b1b1b; border: 2px solid #2b2b2b; padding: 10px; }
+  .stat small { color: #888; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; }
+  .stat div { font-size: 22px; font-weight: bold; margin-top: 2px; }
+  .stat.big div { color: #9bd13b; }
+  .newbest { color: #ffd23f; font-weight: bold; margin-bottom: 8px; }
+  .btns { display: flex; gap: 10px; flex-wrap: wrap; }
+  .btn { background: #9bd13b; color: #000; border: 0; padding: 10px 18px; font: inherit; font-weight: bold; cursor: pointer; }
+  .btn.alt { background: #2b2b2b; color: #eee; }
+  .hint { color: #666; font-size: 12px; margin-top: 12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>AIM <span>TRAINER</span></h1>
+  <div class="hud">
+    <div>Mode <b id="hMode">-</b></div>
+    <div id="hTimeWrap">Time <b id="hTime">-</b></div>
+    <div>Hits <b id="hHits">0</b></div>
+    <div>Accuracy <b id="hAcc">-</b></div>
+    <div id="hLivesWrap" hidden>Lives <b id="hLives">3</b></div>
+  </div>
+</header>
+<div id="arena">
+  <canvas id="c"></canvas>
+  <div class="panel" id="menu">
+    <div class="box">
+      <h2>Pick a mode</h2>
+      <p class="sub">Click the targets as fast as you can. Missing hurts your accuracy.</p>
+      <div class="modes" id="modes"></div>
+      <div class="row">Target size
+        <span class="seg" id="sizes"><button data-s="S">Small</button><button data-s="M">Medium</button><button data-s="L">Large</button></span>
+      </div>
+      <p class="hint">Esc quits a run. R restarts the same mode.</p>
+    </div>
+  </div>
+  <div class="panel" id="result" hidden>
+    <div class="box">
+      <h2 id="rTitle">Done!</h2>
+      <p class="sub" id="rSub"></p>
+      <div class="newbest" id="rBest" hidden>New best!</div>
+      <div class="stats" id="rStats"></div>
+      <div class="btns">
+        <button class="btn" id="again">Play again (R)</button>
+        <button class="btn alt" id="toMenu">Change mode</button>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+const MODES = {
+  grid:   { name: "Gridshot", desc: "3 targets at once. Hit as many as you can in 30 seconds.", time: 30, best: "score", unit: " hits" },
+  flick:  { name: "Flick",    desc: "One target at a time, 30 targets. Be quick.",            count: 30, best: "low",   unit: " ms" },
+  shrink: { name: "Shrink",   desc: "Targets shrink away. Miss 3 and you're out.",           lives: 3, best: "score",  unit: " hits" },
+  tiny:   { name: "Precision", desc: "Tiny targets, 30 seconds. Accuracy counts double.",     time: 30, best: "score",  unit: " pts" }
+};
+const SIZES = { S: 0.7, M: 1, L: 1.35 };
+const $ = id => document.getElementById(id);
+const cv = $("c"), ctx = cv.getContext("2d"), arena = $("arena");
+let W = 0, H = 0, DPR = 1;
+let size = "M", mode = null, run = null, pops = [];
+try { size = localStorage.getItem("aim-size") || "M"; } catch (e) {}
+
+function bestKey(m) { return "aim-best-" + m + "-" + size; }
+function getBest(m) { try { const v = localStorage.getItem(bestKey(m)); return v === null ? null : +v; } catch (e) { return null; } }
+function setBest(m, v) { try { localStorage.setItem(bestKey(m), v); } catch (e) {} }
+
+function resize() {
+  DPR = Math.min(2, devicePixelRatio || 1);
+  const r = arena.getBoundingClientRect(); W = r.width; H = r.height;
+  cv.width = W * DPR; cv.height = H * DPR; ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+}
+addEventListener("resize", resize); resize();
+
+function buildMenu() {
+  $("modes").innerHTML = "";
+  for (const [k, m] of Object.entries(MODES)) {
+    const b = document.createElement("button"); b.className = "mode";
+    const best = getBest(k);
+    b.innerHTML = `<span><b>${m.name}</b><small>${m.desc}</small></span><span class="best">${best === null ? "" : "Best " + best + m.unit}</span>`;
+    b.onclick = () => start(k);
+    $("modes").appendChild(b);
+  }
+  document.querySelectorAll("#sizes button").forEach(b => {
+    b.classList.toggle("on", b.dataset.s === size);
+    b.onclick = () => { size = b.dataset.s; try { localStorage.setItem("aim-size", size); } catch (e) {} buildMenu(); };
+  });
+}
+
+function baseR() { return Math.max(14, Math.min(W, H) * 0.045) * SIZES[size]; }
+function spawn() {
+  const m = run.mode;
+  let r = baseR();
+  if (m === "tiny") r *= 0.45;
+  if (m === "shrink") r *= 1.5;
+  const pad = r + 8;
+  let x, y, tries = 0;
+  do {
+    x = pad + Math.random() * (W - pad * 2); y = pad + Math.random() * (H - pad * 2); tries++;
+  } while (tries < 30 && run.targets.some(t => Math.hypot(t.x - x, t.y - y) < t.r + r + 10));
+  const life = m === "shrink" ? Math.max(700, 1800 - run.hits * 25) : 0;
+  run.targets.push({ x, y, r, born: performance.now(), life });
+}
+
+function start(k) {
+  mode = k;
+  const m = MODES[k];
+  run = { mode: k, hits: 0, misses: 0, targets: [], times: [], start: performance.now(), last: performance.now(), lives: m.lives || 0, over: false };
+  $("menu").hidden = true; $("result").hidden = true;
+  $("hMode").textContent = m.name;
+  $("hTimeWrap").hidden = !m.time && !m.count;
+  $("hLivesWrap").hidden = !m.lives;
+  const n = k === "grid" ? 3 : 1;
+  for (let i = 0; i < n; i++) spawn();
+  hud();
+}
+function stop(show = true) {
+  if (!run) return;
+  run.over = true;
+  const m = MODES[run.mode], shots = run.hits + run.misses;
+  const acc = shots ? run.hits / shots : 0;
+  const avg = run.times.length ? Math.round(run.times.reduce((a, b) => a + b, 0) / run.times.length) : 0;
+  const secs = (performance.now() - run.start) / 1000;
+  let main, mainLabel;
+  if (run.mode === "flick") { main = avg; mainLabel = "Avg time"; }
+  else if (run.mode === "tiny") { main = Math.round(run.hits * 10 * acc * acc); mainLabel = "Score"; }
+  else { main = run.hits; mainLabel = "Hits"; }
+  const prev = getBest(run.mode);
+  const better = run.mode === "flick" ? (run.hits >= m.count && (prev === null || main < prev)) : (main > 0 && (prev === null || main > prev));
+  if (better) setBest(run.mode, main);
+  const runRef = run; run = null; pops = [];
+  if (!show) { buildMenu(); $("menu").hidden = false; return; }
+  SFX.play(better ? "win" : "point");
+  $("rTitle").textContent = runRef.mode === "shrink" ? "Out of lives!" : "Done!";
+  $("rSub").textContent = m.name + " · " + { S: "small", M: "medium", L: "large" }[size] + " targets";
+  $("rBest").hidden = !better;
+  const stats = [
+    [mainLabel, main + (run === null && runRef.mode === "flick" ? " ms" : ""), true],
+    ["Hits", runRef.hits], ["Misses", runRef.misses],
+    ["Accuracy", Math.round(acc * 100) + "%"],
+    ["Avg per hit", avg + " ms"],
+    ["Time", secs.toFixed(1) + "s"],
+    ["Best", (getBest(runRef.mode) ?? "-") + m.unit]
+  ];
+  $("rStats").innerHTML = stats.map(([l, v, big]) => `<div class="stat${big ? " big" : ""}"><small>${l}</small><div>${v}</div></div>`).join("");
+  $("result").hidden = false;
+  hud(runRef);
+}
+
+function hud(r = run) {
+  if (!r) return;
+  const m = MODES[r.mode], shots = r.hits + r.misses;
+  $("hHits").textContent = r.hits;
+  $("hAcc").textContent = shots ? Math.round(r.hits / shots * 100) + "%" : "-";
+  $("hLives").textContent = r.lives;
+  if (m.time) $("hTime").textContent = Math.max(0, m.time - (performance.now() - r.start) / 1000).toFixed(1);
+  else if (m.count) $("hTime").textContent = r.hits + " / " + m.count;
+}
+
+function shoot(x, y) {
+  if (!run || run.over) return;
+  const now = performance.now();
+  // hit the newest target under the cursor first
+  for (let i = run.targets.length - 1; i >= 0; i--) {
+    const t = run.targets[i], r = curR(t, now);
+    if (Math.hypot(t.x - x, t.y - y) <= r) {
+      run.targets.splice(i, 1); run.hits++;
+      run.times.push(now - Math.max(run.last, t.born)); run.last = now;
+      pops.push({ x: t.x, y: t.y, r, t: now, hit: true });
+      SFX.tone(700 + Math.random() * 200, 0.05, "square", 0.08, 1200);
+      if (run.mode === "flick" && run.hits >= MODES.flick.count) { hud(); stop(); return; }
+      spawn(); hud(); return;
+    }
+  }
+  run.misses++;
+  pops.push({ x, y, r: 6, t: now, hit: false });
+  SFX.tone(140, 0.06, "triangle", 0.08);
+  hud();
+}
+function curR(t, now) { return t.life ? t.r * Math.max(0, 1 - (now - t.born) / t.life) : t.r; }
+
+arena.addEventListener("pointerdown", e => {
+  if (!run) return;
+  if (e.target.closest(".panel")) return;
+  const r = arena.getBoundingClientRect();
+  shoot(e.clientX - r.left, e.clientY - r.top);
+});
+addEventListener("keydown", e => {
+  const k = e.key.toLowerCase();
+  if (k === "escape" && run) stop(false);
+  else if (k === "r" && mode && (run || !$("result").hidden)) start(mode);
+});
+$("again").onclick = () => start(mode);
+$("toMenu").onclick = () => { $("result").hidden = true; buildMenu(); $("menu").hidden = false; };
+
+function drawTarget(x, y, r, a = 1) {
+  ctx.globalAlpha = a;
+  const rings = ["#e8423f", "#fff", "#e8423f", "#fff", "#e8423f"];
+  rings.forEach((c, i) => { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r * (1 - i / 5), 0, 7); ctx.fill(); });
+  ctx.globalAlpha = 1;
+}
+function frame(now) {
+  ctx.clearRect(0, 0, W, H);
+  if (run) {
+    const m = MODES[run.mode];
+    if (m.time && now - run.start >= m.time * 1000) { stop(); }
+    else {
+      if (run.mode === "shrink") {
+        for (let i = run.targets.length - 1; i >= 0; i--) {
+          const t = run.targets[i];
+          if (now - t.born >= t.life) {
+            run.targets.splice(i, 1); run.lives--; run.misses++; SFX.play("hit");
+            pops.push({ x: t.x, y: t.y, r: 10, t: now, hit: false });
+            if (run.lives <= 0) { hud(); stop(); break; }
+            spawn();
+          }
+        }
+        // speed up: add a second target after 15 hits
+        if (run && run.hits >= 15 && run.targets.length < 2) spawn();
+      }
+      if (run) { run.targets.forEach(t => drawTarget(t.x, t.y, curR(t, now))); hud(); }
+    }
+  }
+  pops = pops.filter(p => now - p.t < 350);
+  pops.forEach(p => {
+    const k = (now - p.t) / 350;
+    ctx.strokeStyle = p.hit ? `rgba(155,209,59,${1 - k})` : `rgba(232,66,63,${1 - k})`;
+    ctx.lineWidth = 3; ctx.beginPath();
+    if (p.hit) ctx.arc(p.x, p.y, p.r + k * 20, 0, 7);
+    else { const s = 6 + k * 4; ctx.moveTo(p.x - s, p.y - s); ctx.lineTo(p.x + s, p.y + s); ctx.moveTo(p.x + s, p.y - s); ctx.lineTo(p.x - s, p.y + s); }
+    ctx.stroke();
+  });
+  requestAnimationFrame(frame);
+}
+buildMenu();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

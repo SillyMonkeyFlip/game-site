@@ -1,7 +1,7 @@
 /* Service worker for Boring game site.
    Caches only the site shell (page, font, icons, covers) so the app opens fast.
    Game files are NOT cached here — they load straight from the network,
-   so they never go stale. Bump VERSION whenever you change game/index.html. */
+   so they never go stale. Bump VERSION whenever you change game/index.html or game2/index.html. */
 const VERSION = "bgs-v4";
 const SHELL = [
   "game/",

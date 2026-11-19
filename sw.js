@@ -5,6 +5,7 @@
 const VERSION = "bgs-v4";
 const SHELL = [
   "game/",
+  "images/found-me.png",
   "vrc%20font.ttf",
   "favicon.png",
   "manifest.webmanifest",
@@ -34,13 +35,14 @@ self.addEventListener("fetch", e => {
   const rel = decodeURIComponent(url.pathname.slice(base.length));
 
   // The game page: try the network first (so updates show up), fall back to cache offline.
-  if (req.mode === "navigate" && (rel === "game/" || rel === "game/index.html")) {
+  if (req.mode === "navigate" && /^game2?\/(index\.html)?$/.test(rel)) {
+    const page = rel.startsWith("game2") ? "game2/" : "game/";
     e.respondWith(
       fetch(req).then(res => {
         const copy = res.clone();
-        caches.open(VERSION).then(c => c.put("game/", copy));
+        caches.open(VERSION).then(c => c.put(page, copy));
         return res;
-      }).catch(() => caches.match("game/"))
+      }).catch(() => caches.match(page))
     );
     return;
   }
